@@ -1,3 +1,4 @@
+set T ordered := 2025..2050;
 # Crude Steel Production
 param base_demand := 144000000;    # Steel production at year 2025
 param growth_rate := 0.05;         # Production growth rate upto 2050
@@ -211,4 +212,5 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
     
     
+
     
