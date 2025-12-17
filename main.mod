@@ -2,6 +2,13 @@ reset;
 set T ordered := 2025..2050;
 
 include parameters.mod;
+
+#Time dependent parameters
+param N2_cost_h2{t in T} :=
+    N2_cost_h2_start - ( (ord(t)-1) / (card(T)-1) ) * (N2_cost_h2_start - N2_cost_h2_end);
+
+
+
 include variables.mod;
 
 # Process modules
@@ -25,6 +32,8 @@ include modules/q_carbon_capture.mod;
 include modules/r_cost.mod;
 include modules/s_emissions.mod;
 include modules/t_additional_constraints.mod;
+
+
 
 # Objective
 param cost_ref := 500;     # $/t steel (target cost scale)
@@ -59,5 +68,6 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
