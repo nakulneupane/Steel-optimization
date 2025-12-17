@@ -52,7 +52,6 @@ def load_defaults():
     return params
 
 params = load_defaults()
-
 if not params:
     st.error("No parameters declared as `param x default v;`")
     st.stop()
@@ -76,11 +75,11 @@ def write_user_parameters(p):
             f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Write AMPL run file (file-based output)
+# Write AMPL run file
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
-        f.write(f'''
+        f.write(f"""
 reset;
 option log_file "{AMPL_OUTPUT_FILE.name}";
 option log_flush 1;
@@ -88,7 +87,7 @@ option log_flush 1;
 include parameters.mod;
 include user_parameters.mod;
 include main.mod;
-''')
+""")
 
 # ==================================================
 # Run AMPL
@@ -102,16 +101,18 @@ if st.button("Run Optimization", type="primary"):
         subprocess.run([AMPL_EXE, RUN_FILE.name], cwd=BASE_DIR)
 
     if not AMPL_OUTPUT_FILE.exists():
-        st.error("AMPL ran but produced no output file.")
+        st.error("AMPL ran but produced no output.")
         st.stop()
 
     st.success("Optimization completed")
 
-    text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
-    lines = text.splitlines()
+    lines = AMPL_OUTPUT_FILE.read_text(
+        encoding="utf-8",
+        errors="ignore"
+    ).splitlines()
 
     # ==================================================
-    # 1) COST PER TON TABLE
+    # 1) COST PER TON (KEEP WORKING LOGIC)
     # ==================================================
     cost_rows = []
     year = None
@@ -127,22 +128,22 @@ if st.button("Run Optimization", type="primary"):
                     "NG DRI-EAF ($/t)": ng,
                     "H₂ DRI-EAF ($/t)": h2,
                     "Scrap-EAF ($/t)": scrap,
-                    "Average ($/t)": avg
+                    "Average ($/t)": avg,
                 })
             year = int(re.findall(r"\d{4}", l)[0])
             bf = coal = ng = h2 = scrap = avg = np.nan
 
         if "BF-BOF steel:" in l:
             bf = float(re.findall(r"([\d.]+)", l)[0])
-        if "Coal DRI–EAF steel:" in l:
+        elif "Coal DRI–EAF steel:" in l:
             coal = float(re.findall(r"([\d.]+)", l)[0])
-        if "NG DRI–EAF steel:" in l:
+        elif "NG DRI–EAF steel:" in l:
             ng = float(re.findall(r"([\d.]+)", l)[0])
-        if "H2 DRI–EAF steel:" in l:
+        elif "H2 DRI–EAF steel:" in l:
             h2 = float(re.findall(r"([\d.]+)", l)[0])
-        if "Scrap–EAF steel:" in l:
+        elif "Scrap–EAF steel:" in l:
             scrap = float(re.findall(r"([\d.]+)", l)[0])
-        if "Average Cost:" in l:
+        elif "Average Cost:" in l:
             avg = float(re.findall(r"([\d.]+)", l)[0])
 
     if year is not None:
@@ -153,11 +154,10 @@ if st.button("Run Optimization", type="primary"):
             "NG DRI-EAF ($/t)": ng,
             "H₂ DRI-EAF ($/t)": h2,
             "Scrap-EAF ($/t)": scrap,
-            "Average ($/t)": avg
+            "Average ($/t)": avg,
         })
 
     df_cost = pd.DataFrame(cost_rows)
-
     st.subheader("💰 Cost per ton of steel")
     st.dataframe(df_cost, use_container_width=True)
 
@@ -173,49 +173,49 @@ if st.button("Run Optimization", type="primary"):
             if year is not None:
                 emis_rows.append({
                     "Year": year,
-                    "BF-BOF (tCO₂/t)": bf,
-                    "Coal DRI-EAF (tCO₂/t)": coal,
-                    "NG DRI-EAF (tCO₂/t)": ng,
-                    "H₂ DRI-EAF (tCO₂/t)": h2,
-                    "Scrap-EAF (tCO₂/t)": scrap,
-                    "Average (tCO₂/t)": avg
+                    "BF-BOF": bf,
+                    "Coal DRI-EAF": coal,
+                    "NG DRI-EAF": ng,
+                    "H₂ DRI-EAF": h2,
+                    "Scrap-EAF": scrap,
+                    "Average": avg,
                 })
             year = int(re.findall(r"\d{4}", l)[0])
             bf = coal = ng = h2 = scrap = avg = np.nan
 
         if "BF-BOF Total per ton:" in l:
             bf = float(re.findall(r"([\d.]+)", l)[0])
-        if "Coal DRI-EAF Total per ton:" in l:
+        elif "Coal DRI-EAF Total per ton:" in l:
             coal = float(re.findall(r"([\d.]+)", l)[0])
-        if "NG DRI-EAF Total per ton:" in l:
+        elif "NG DRI-EAF Total per ton:" in l:
             ng = float(re.findall(r"([\d.]+)", l)[0])
-        if "H2 DRI-EAF Total per ton:" in l:
+        elif "H2 DRI-EAF Total per ton:" in l:
             h2 = float(re.findall(r"([\d.]+)", l)[0])
-        if "Scrap-EAF Total per ton:" in l:
+        elif "Scrap-EAF Total per ton:" in l:
             scrap = float(re.findall(r"([\d.]+)", l)[0])
-        if "Average System Emissions:" in l:
+        elif "Average System Emissions:" in l:
             avg = float(re.findall(r"([\d.]+)", l)[0])
 
     if year is not None:
         emis_rows.append({
             "Year": year,
-            "BF-BOF (tCO₂/t)": bf,
-            "Coal DRI-EAF (tCO₂/t)": coal,
-            "NG DRI-EAF (tCO₂/t)": ng,
-            "H₂ DRI-EAF (tCO₂/t)": h2,
-            "Scrap-EAF (tCO₂/t)": scrap,
-            "Average (tCO₂/t)": avg
+            "BF-BOF": bf,
+            "Coal DRI-EAF": coal,
+            "NG DRI-EAF": ng,
+            "H₂ DRI-EAF": h2,
+            "Scrap-EAF": scrap,
+            "Average": avg,
         })
 
     df_emis = pd.DataFrame(emis_rows)
-
     st.subheader("🌍 CO₂ emissions per ton of steel")
     st.dataframe(df_emis, use_container_width=True)
 
     # ==================================================
-    # 3) PRODUCTION ROUTES TABLE
+    # 3) PRODUCTION ROUTES (12 columns)
     # ==================================================
-    prod_pattern = re.compile(
+    prod_rows = []
+    prod_re = re.compile(
         r"^\s*(\d{4})\s+"
         r"(\d+)/\s*([\d.]+)\s+"
         r"(\d+)/\s*([\d.]+)\s+"
@@ -225,9 +225,8 @@ if st.button("Run Optimization", type="primary"):
         r"(\d+)"
     )
 
-    prod_rows = []
     for l in lines:
-        m = prod_pattern.match(l)
+        m = prod_re.match(l)
         if m:
             prod_rows.append({
                 "Year": int(m.group(1)),
@@ -245,14 +244,14 @@ if st.button("Run Optimization", type="primary"):
             })
 
     df_prod = pd.DataFrame(prod_rows)
-
     st.subheader("🏭 Production routes")
     st.dataframe(df_prod, use_container_width=True)
 
     # ==================================================
-    # 4) CARBON CAPTURE TABLE
+    # 4) CARBON CAPTURE (8 columns)
     # ==================================================
-    ccs_pattern = re.compile(
+    ccs_rows = []
+    ccs_re = re.compile(
         r"^\s*(\d{4})\s+"
         r"(\d+)/\s*([\d.]+)\s+"
         r"(\d+)/\s*([\d.]+)\s+"
@@ -260,9 +259,8 @@ if st.button("Run Optimization", type="primary"):
         r"(\d+)"
     )
 
-    ccs_rows = []
     for l in lines:
-        m = ccs_pattern.match(l)
+        m = ccs_re.match(l)
         if m:
             ccs_rows.append({
                 "Year": int(m.group(1)),
@@ -276,6 +274,5 @@ if st.button("Run Optimization", type="primary"):
             })
 
     df_ccs = pd.DataFrame(ccs_rows)
-
     st.subheader("🧪 Carbon capture requirements")
     st.dataframe(df_ccs, use_container_width=True)
