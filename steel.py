@@ -2,6 +2,7 @@ import streamlit as st
 import subprocess
 import re
 from pathlib import Path
+import shutil
 
 # ==================================================
 # Streamlit setup
@@ -24,13 +25,17 @@ RESULTS_FILE = BASE_DIR / "results.txt"
 # ==================================================
 # Sanity checks
 # ==================================================
-missing = []
-for f in [PARAM_FILE, MAIN_MOD_FILE]:
-    if not f.exists():
-        missing.append(f.name)
-
+missing = [f.name for f in [PARAM_FILE, MAIN_MOD_FILE] if not f.exists()]
 if missing:
     st.error(f"Missing required files: {', '.join(missing)}")
+    st.stop()
+
+# ==================================================
+# Detect AMPL executable
+# ==================================================
+AMPL_EXE = shutil.which("ampl")
+if not AMPL_EXE:
+    st.error("AMPL executable not found in PATH. Please install AMPL or add it to PATH.")
     st.stop()
 
 # ==================================================
@@ -52,7 +57,6 @@ def load_parameters():
     return params
 
 params = load_parameters()
-
 if not params:
     st.error("No scalar parameters found in parameters.mod")
     st.stop()
@@ -61,7 +65,6 @@ if not params:
 # Sidebar: parameter editor
 # ==================================================
 st.sidebar.header("Model Parameters")
-
 user_params = {}
 for name, value in sorted(params.items()):
     user_params[name] = st.sidebar.number_input(
@@ -71,7 +74,7 @@ for name, value in sorted(params.items()):
     )
 
 # ==================================================
-# Write overriding parameter file
+# Write user parameter file
 # ==================================================
 def write_user_parameters(params_dict):
     with open(USER_PARAM_FILE, "w") as f:
@@ -82,21 +85,15 @@ def write_user_parameters(params_dict):
             f.write(f"param {k} := {v};\n")
 
 # ==================================================
-# Ensure run_ampl.run exists
+# Create run_ampl.run if missing
 # ==================================================
 if not RUN_FILE.exists():
     with open(RUN_FILE, "w") as f:
         f.write(
-            "reset;\n\n"
-            "option solver gurobi;\n\n"
-            "model parameters.mod;\n"
-            "model user_parameters.mod;\n"
-            "model main.mod;\n\n"
-            "solve;\n\n"
-            "display obj_scaled > results.txt;\n"
-            "display total_cost >> results.txt;\n"
-            "display total_emissions >> results.txt;\n"
-            "display total_steel >> results.txt;\n"
+            "# Auto-generated run file for Streamlit\n"
+            "include parameters.mod;\n"
+            "include user_parameters.mod;\n"
+            "include main.mod;\n"
         )
 
 # ==================================================
@@ -108,24 +105,24 @@ if st.button("Run Optimization", type="primary"):
 
     with st.spinner("Running AMPL optimization..."):
         result = subprocess.run(
-            ["ampl", str(RUN_FILE)],
+            [AMPL_EXE, str(RUN_FILE)],
             cwd=BASE_DIR,
             capture_output=True,
             text=True
         )
 
+    st.subheader("AMPL Output")
+    st.text("=== STDOUT ===")
+    st.text(result.stdout)
+    st.text("=== STDERR ===")
+    st.text(result.stderr)
+
     if result.returncode != 0:
-        st.error("AMPL execution failed")
-        st.subheader("AMPL error output")
-        st.text(result.stderr)
+        st.error("AMPL execution failed. Check the STDERR above for details.")
     else:
         st.success("Optimization completed successfully")
-
-        st.subheader("AMPL solver output")
-        st.text(result.stdout)
-
         if RESULTS_FILE.exists():
-            st.subheader("Results")
+            st.subheader("Results from results.txt")
             st.text(RESULTS_FILE.read_text())
         else:
             st.warning("results.txt not found – check run_ampl.run")
