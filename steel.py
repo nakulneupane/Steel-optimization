@@ -35,19 +35,6 @@ if not AMPL_EXE:
     st.stop()
 
 # ==================================================
-# Helper: safe parsing of "tons/fraction"
-# ==================================================
-def safe_split_tf(x):
-    if "/" not in x:
-        return 0.0, 0.0
-    t, f = x.split("/", 1)
-    t = t.strip()
-    f = f.strip()
-    tons = float(t) if t != "" else 0.0
-    frac = float(f) if f != "" else 0.0
-    return tons, frac
-
-# ==================================================
 # Load DEFAULT parameters
 # ==================================================
 param_pattern = re.compile(
@@ -68,6 +55,8 @@ params = load_defaults()
 if not params:
     st.error("No parameters declared as `param x default v;`")
     st.stop()
+
+H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
 # Sidebar parameters
@@ -122,7 +111,7 @@ if st.button("Run Optimization", type="primary"):
     lines = text.splitlines()
 
     # ==================================================
-    # COST PER TON (UNCHANGED)
+    # COST PER TON (UNCHANGED – WORKING)
     # ==================================================
     cost_rows = []
     year = None
@@ -150,7 +139,7 @@ if st.button("Run Optimization", type="primary"):
                 "BF-BOF ($/t)": bf,
                 "Coal DRI-EAF ($/t)": coal,
                 "NG DRI-EAF ($/t)": ng,
-                "H₂ DRI-EAF ($/t)": h2,
+                "H₂ DRI-EAF ($/t)": h2 if year >= H2_START_YEAR else np.nan,
                 "Scrap-EAF ($/t)": scrap,
                 "Average ($/t)": avg
             })
@@ -164,7 +153,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # EMISSIONS PER TON (TOTAL ONLY – H₂ FIX PRESERVED)
+    # EMISSIONS PER TON (TOTAL ROUTE ONLY – FIXED)
     # ==================================================
     emis_rows = []
     year = None
@@ -176,17 +165,18 @@ if st.button("Run Optimization", type="primary"):
             bf = coal = ng = h2 = scrap = avg = np.nan
 
         if "BF-BOF Total per ton:" in l:
-            bf = float(re.findall(r"([\d.]+)", l)[0])
+            bf = float(re.findall(r"([\d.]+)", l)[-1])
         if "Coal DRI-EAF Total per ton:" in l:
-            coal = float(re.findall(r"([\d.]+)", l)[0])
+            coal = float(re.findall(r"([\d.]+)", l)[-1])
         if "NG DRI-EAF Total per ton:" in l:
-            ng = float(re.findall(r"([\d.]+)", l)[0])
+            ng = float(re.findall(r"([\d.]+)", l)[-1])
         if "H2 DRI-EAF Total per ton:" in l:
-            h2 = float(re.findall(r"([\d.]+)", l)[0])
+            val = float(re.findall(r"([\d.]+)", l)[-1])
+            h2 = val if year >= H2_START_YEAR else np.nan
         if "Scrap-EAF Total per ton:" in l:
-            scrap = float(re.findall(r"([\d.]+)", l)[0])
+            scrap = float(re.findall(r"([\d.]+)", l)[-1])
         if "Average System Emissions:" in l:
-            avg = float(re.findall(r"([\d.]+)", l)[0])
+            avg = float(re.findall(r"([\d.]+)", l)[-1])
             emis_rows.append({
                 "Year": year,
                 "BF-BOF (tCO₂/t)": bf,
@@ -206,7 +196,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # PRODUCTION ROUTE (SAFE PARSING)
+    # PRODUCTION ROUTE (ROBUST PARSING – NO ERRORS)
     # ==================================================
     prod_rows = []
     capture = False
@@ -218,28 +208,25 @@ if st.button("Run Optimization", type="primary"):
         if capture and "CCS" in l:
             break
         if capture:
-            p = l.split()
-            if p and p[0].isdigit() and len(p) >= 7:
-                bf_t, bf_f = safe_split_tf(p[1])
-                cd_t, cd_f = safe_split_tf(p[2])
-                ng_t, ng_f = safe_split_tf(p[3])
-                h2_t, h2_f = safe_split_tf(p[4])
-                sc_t, sc_f = safe_split_tf(p[5])
-
-                prod_rows.append({
-                    "Year": int(p[0]),
-                    "BF-BOF (t)": bf_t,
-                    "BF-BOF frac": bf_f,
-                    "Coal DRI (t)": cd_t,
-                    "Coal DRI frac": cd_f,
-                    "NG DRI (t)": ng_t,
-                    "NG DRI frac": ng_f,
-                    "H₂ DRI (t)": h2_t,
-                    "H₂ DRI frac": h2_f,
-                    "Scrap-EAF (t)": sc_t,
-                    "Scrap-EAF frac": sc_f,
-                    "Total steel (t)": float(p[6]),
-                })
+            parts = re.findall(r"(\d+|\d+/\d+\.\d+)", l)
+            if len(parts) >= 7:
+                try:
+                    prod_rows.append({
+                        "Year": int(parts[0]),
+                        "BF-BOF (t)": float(parts[1].split("/")[0]),
+                        "BF-BOF frac": float(parts[1].split("/")[1]),
+                        "Coal DRI (t)": float(parts[2].split("/")[0]),
+                        "Coal DRI frac": float(parts[2].split("/")[1]),
+                        "NG DRI (t)": float(parts[3].split("/")[0]),
+                        "NG DRI frac": float(parts[3].split("/")[1]),
+                        "H₂ DRI (t)": float(parts[4].split("/")[0]),
+                        "H₂ DRI frac": float(parts[4].split("/")[1]),
+                        "Scrap-EAF (t)": float(parts[5].split("/")[0]),
+                        "Scrap-EAF frac": float(parts[5].split("/")[1]),
+                        "Total steel (t)": float(parts[6]),
+                    })
+                except:
+                    pass
 
     df_prod = pd.DataFrame(prod_rows)
 
@@ -252,27 +239,26 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # CARBON CAPTURE (SAFE PARSING)
+    # CARBON CAPTURE (ROBUST PARSING)
     # ==================================================
     ccs_rows = []
 
     for l in lines:
-        p = l.split()
-        if p and p[0].isdigit() and "/" in l and len(p) >= 5:
-            bf_t, bf_f = safe_split_tf(p[1])
-            cd_t, cd_f = safe_split_tf(p[2])
-            ng_t, ng_f = safe_split_tf(p[3])
-
-            ccs_rows.append({
-                "Year": int(p[0]),
-                "BF-BOF CCS (t)": bf_t,
-                "BF-BOF CCS frac": bf_f,
-                "Coal DRI CCS (t)": cd_t,
-                "Coal DRI CCS frac": cd_f,
-                "NG DRI CCS (t)": ng_t,
-                "NG DRI CCS frac": ng_f,
-                "Total CCS (t)": float(p[4]),
-            })
+        parts = re.findall(r"(\d+|\d+/\d+\.\d+)", l)
+        if len(parts) == 5:
+            try:
+                ccs_rows.append({
+                    "Year": int(parts[0]),
+                    "BF-BOF CCS (t)": float(parts[1].split("/")[0]),
+                    "BF-BOF CCS frac": float(parts[1].split("/")[1]),
+                    "Coal DRI CCS (t)": float(parts[2].split("/")[0]),
+                    "Coal DRI CCS frac": float(parts[2].split("/")[1]),
+                    "NG DRI CCS (t)": float(parts[3].split("/")[0]),
+                    "NG DRI CCS frac": float(parts[3].split("/")[1]),
+                    "Total CCS (t)": float(parts[4]),
+                })
+            except:
+                pass
 
     df_ccs = pd.DataFrame(ccs_rows)
 
