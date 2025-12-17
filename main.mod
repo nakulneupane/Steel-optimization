@@ -6,7 +6,8 @@ include parameters.mod;
 #Time dependent parameters
 param N2_cost_h2{t in T} :=
     N2_cost_h2_start - ( (ord(t)-1) / (card(T)-1) ) * (N2_cost_h2_start - N2_cost_h2_end);
-
+param N11_capex_ng{t in T} :=
+    N11_capex_ng_start - ( (ord(t) - 1) / (card(T) - 1) ) * (N11_capex_ng_start - N11_capex_ng_end);
 
 
 include variables.mod;
@@ -68,6 +69,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
