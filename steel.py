@@ -35,6 +35,19 @@ if not AMPL_EXE:
     st.stop()
 
 # ==================================================
+# Helper: safe parsing of "tons/fraction"
+# ==================================================
+def safe_split_tf(x):
+    if "/" not in x:
+        return 0.0, 0.0
+    t, f = x.split("/", 1)
+    t = t.strip()
+    f = f.strip()
+    tons = float(t) if t != "" else 0.0
+    frac = float(f) if f != "" else 0.0
+    return tons, frac
+
+# ==================================================
 # Load DEFAULT parameters
 # ==================================================
 param_pattern = re.compile(
@@ -55,8 +68,6 @@ params = load_defaults()
 if not params:
     st.error("No parameters declared as `param x default v;`")
     st.stop()
-
-H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
 # Sidebar parameters
@@ -153,7 +164,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # EMISSIONS PER TON (FIXED H₂ PARSING)
+    # EMISSIONS PER TON (TOTAL ONLY – H₂ FIX PRESERVED)
     # ==================================================
     emis_rows = []
     year = None
@@ -171,11 +182,7 @@ if st.button("Run Optimization", type="primary"):
         if "NG DRI-EAF Total per ton:" in l:
             ng = float(re.findall(r"([\d.]+)", l)[0])
         if "H2 DRI-EAF Total per ton:" in l:
-            m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
-            if m and year >= H2_START_YEAR:
-                h2 = float(m.group(1))
-            else:
-                h2 = np.nan
+            h2 = float(re.findall(r"([\d.]+)", l)[0])
         if "Scrap-EAF Total per ton:" in l:
             scrap = float(re.findall(r"([\d.]+)", l)[0])
         if "Average System Emissions:" in l:
@@ -199,7 +206,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # PRODUCTION ROUTE (UNCHANGED)
+    # PRODUCTION ROUTE (SAFE PARSING)
     # ==================================================
     prod_rows = []
     capture = False
@@ -212,19 +219,25 @@ if st.button("Run Optimization", type="primary"):
             break
         if capture:
             p = l.split()
-            if p and p[0].isdigit():
+            if p and p[0].isdigit() and len(p) >= 7:
+                bf_t, bf_f = safe_split_tf(p[1])
+                cd_t, cd_f = safe_split_tf(p[2])
+                ng_t, ng_f = safe_split_tf(p[3])
+                h2_t, h2_f = safe_split_tf(p[4])
+                sc_t, sc_f = safe_split_tf(p[5])
+
                 prod_rows.append({
                     "Year": int(p[0]),
-                    "BF-BOF (t)": float(p[1].split("/")[0]),
-                    "BF-BOF frac": float(p[1].split("/")[1]),
-                    "Coal DRI (t)": float(p[2].split("/")[0]),
-                    "Coal DRI frac": float(p[2].split("/")[1]),
-                    "NG DRI (t)": float(p[3].split("/")[0]),
-                    "NG DRI frac": float(p[3].split("/")[1]),
-                    "H₂ DRI (t)": float(p[4].split("/")[0]),
-                    "H₂ DRI frac": float(p[4].split("/")[1]),
-                    "Scrap-EAF (t)": float(p[5].split("/")[0]),
-                    "Scrap-EAF frac": float(p[5].split("/")[1]),
+                    "BF-BOF (t)": bf_t,
+                    "BF-BOF frac": bf_f,
+                    "Coal DRI (t)": cd_t,
+                    "Coal DRI frac": cd_f,
+                    "NG DRI (t)": ng_t,
+                    "NG DRI frac": ng_f,
+                    "H₂ DRI (t)": h2_t,
+                    "H₂ DRI frac": h2_f,
+                    "Scrap-EAF (t)": sc_t,
+                    "Scrap-EAF frac": sc_f,
                     "Total steel (t)": float(p[6]),
                 })
 
@@ -239,24 +252,27 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # CARBON CAPTURE (UNCHANGED)
+    # CARBON CAPTURE (SAFE PARSING)
     # ==================================================
     ccs_rows = []
 
     for l in lines:
         p = l.split()
-        if p and p[0].isdigit() and "/" in l:
-            if len(p) >= 5:
-                ccs_rows.append({
-                    "Year": int(p[0]),
-                    "BF-BOF CCS (t)": float(p[1].split("/")[0]),
-                    "BF-BOF CCS frac": float(p[1].split("/")[1]),
-                    "Coal DRI CCS (t)": float(p[2].split("/")[0]),
-                    "Coal DRI CCS frac": float(p[2].split("/")[1]),
-                    "NG DRI CCS (t)": float(p[3].split("/")[0]),
-                    "NG DRI CCS frac": float(p[3].split("/")[1]),
-                    "Total CCS (t)": float(p[4]),
-                })
+        if p and p[0].isdigit() and "/" in l and len(p) >= 5:
+            bf_t, bf_f = safe_split_tf(p[1])
+            cd_t, cd_f = safe_split_tf(p[2])
+            ng_t, ng_f = safe_split_tf(p[3])
+
+            ccs_rows.append({
+                "Year": int(p[0]),
+                "BF-BOF CCS (t)": bf_t,
+                "BF-BOF CCS frac": bf_f,
+                "Coal DRI CCS (t)": cd_t,
+                "Coal DRI CCS frac": cd_f,
+                "NG DRI CCS (t)": ng_t,
+                "NG DRI CCS frac": ng_f,
+                "Total CCS (t)": float(p[4]),
+            })
 
     df_ccs = pd.DataFrame(ccs_rows)
 
