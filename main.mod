@@ -26,7 +26,11 @@ param h2_avail{t in T} :=
     else h2_base
          * (1 + h2_slow_growth)^( min(t, h2_intermediate_year) - h2_start_year )
          * (1 + h2_fast_growth)^( max(t - h2_intermediate_year, 0) );
-
+param grid_ef{t in T} :=
+    if t <= grid_ef_start_year then grid_ef_start_value
+    else grid_ef_start_value
+         - ( (t - grid_ef_start_year) / (grid_ef_end_year - grid_ef_start_year) ) 
+           * (grid_ef_start_value - grid_ef_end_value);
 include variables.mod;
 
 # Process modules
@@ -86,6 +90,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
