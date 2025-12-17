@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 # ==================================================
-# Streamlit UI
+# Streamlit setup
 # ==================================================
 st.set_page_config(layout="wide")
 st.title("Steel System Optimization (AMPL)")
@@ -15,26 +15,17 @@ st.caption("Edit parameters → Run AMPL → View results")
 # Paths
 # ==================================================
 BASE_DIR = Path(__file__).parent
-
 PARAM_FILE = BASE_DIR / "parameters.mod"
 USER_PARAM_FILE = BASE_DIR / "user_parameters.mod"
 RUN_FILE = BASE_DIR / "run_ampl.run"
 
-REQUIRED_FILES = [
-    "parameters.mod",
-    "main.mod",
-    "cost_report.mod",
-    "emissions_report.mod",
-    "report.mod",
-]
-
 # ==================================================
 # Sanity checks
 # ==================================================
-missing = [f for f in REQUIRED_FILES if not (BASE_DIR / f).exists()]
-if missing:
-    st.error(f"Missing required AMPL files: {', '.join(missing)}")
-    st.stop()
+for f in [PARAM_FILE]:
+    if not f.exists():
+        st.error(f"Missing required file: {f.name}")
+        st.stop()
 
 AMPL_EXE = shutil.which("ampl")
 if not AMPL_EXE:
@@ -42,25 +33,28 @@ if not AMPL_EXE:
     st.stop()
 
 # ==================================================
-# Load scalar DEFAULT parameters
+# Extract scalar DEFAULT parameters
 # ==================================================
 param_pattern = re.compile(
-    r"^\s*param\s+(\w+)\s+default\s+([-+0-9.eE]+)\s*;",
-    re.IGNORECASE,
+    r"^\s*param\s+(\w+)\s+default\s+([0-9.eE+-]+)\s*;",
+    re.IGNORECASE
 )
 
-params = {}
+def load_default_parameters():
+    params = {}
+    with open(PARAM_FILE, "r") as f:
+        for line in f:
+            m = param_pattern.match(line)
+            if m:
+                params[m.group(1)] = float(m.group(2))
+    return params
 
-with open(PARAM_FILE) as f:
-    for line in f:
-        m = param_pattern.match(line)
-        if m:
-            params[m.group(1)] = float(m.group(2))
+params = load_default_parameters()
 
 if not params:
     st.error(
-        "No scalar DEFAULT parameters found.\n\n"
-        "Use this format in parameters.mod:\n\n"
+        "No tunable parameters found.\n\n"
+        "Parameters must be declared as:\n"
         "param x default 10;"
     )
     st.stop()
@@ -76,7 +70,7 @@ user_params = {
 }
 
 # ==================================================
-# Write user override file
+# Write user_parameters.mod (LET overrides)
 # ==================================================
 def write_user_parameters(p):
     with open(USER_PARAM_FILE, "w") as f:
@@ -85,20 +79,20 @@ def write_user_parameters(p):
             f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Write AMPL run file (ALWAYS overwrite)
+# Write run file (FORCED OUTPUT)
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
         f.write(
+            'printf "\\n=== AMPL START ===\\n";\n'
             "reset;\n\n"
-            "include parameters.mod;\n"
-            "include user_parameters.mod;\n"
+            'printf "Including parameters.mod\\n";\n'
+            "include parameters.mod;\n\n"
+            'printf "Including user_parameters.mod\\n";\n'
+            "include user_parameters.mod;\n\n"
+            'printf "Including main.mod (defines T + solve)\\n";\n'
             "include main.mod;\n\n"
-            "solve;\n\n"
-            'printf "\\n=== AMPL SOLVE COMPLETED ===\\n";\n\n'
-            "include cost_report.mod;\n"
-            "include emissions_report.mod;\n"
-            "include report.mod;\n"
+            'printf "\\n=== AMPL END ===\\n";\n'
         )
 
 # ==================================================
@@ -111,32 +105,22 @@ if st.button("Run Optimization", type="primary"):
 
     with st.spinner("Running AMPL..."):
         result = subprocess.run(
-            [AMPL_EXE, str(RUN_FILE)],
-            cwd=BASE_DIR,
+            [AMPL_EXE, "run_ampl.run"],
+            cwd=str(BASE_DIR),
             capture_output=True,
-            text=True,
+            text=True
         )
 
-    if result.returncode != 0:
-        st.error("AMPL execution failed")
-        st.subheader("STDERR")
-        st.text(result.stderr)
-        st.stop()
+    st.subheader("AMPL STDOUT")
+    st.text(result.stdout if result.stdout else "<empty>")
 
-    st.success("Optimization completed")
+    st.subheader("AMPL STDERR")
+    st.text(result.stderr if result.stderr else "<empty>")
 
-    output = (result.stdout or "") + "\n" + (result.stderr or "")
-    output = output.strip()
+    st.subheader("Return Code")
+    st.write(result.returncode)
 
-    st.subheader("AMPL Output")
-
-    if not output:
-        st.error(
-            "AMPL ran successfully but produced NO OUTPUT.\n\n"
-            "This means:\n"
-            "• solve; did not run\n"
-            "• or reports were not executed\n"
-            "• or printf statements were removed\n"
-        )
+    if result.returncode == 0:
+        st.success("Optimization completed")
     else:
-        st.text(output)
+        st.error("AMPL execution failed")
