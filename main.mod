@@ -15,7 +15,12 @@ param N15_ccs_cost_cdri{t in T} :=
     N15_ccs_cost_cdri_start - ((ord(t)-1)/(card(T)-1)) * (N15_ccs_cost_cdri_start - N15_ccs_cost_cdri_end);
 param N15_ccs_cost_ngdri{t in T} :=
     N15_ccs_cost_ngdri_start - ((ord(t)-1)/(card(T)-1)) * (N15_ccs_cost_ngdri_start - N15_ccs_cost_ngdri_end);
-
+param N12_cost_H2{t in T} :=
+    if t <= 2030 then N12_cost_H2_start
+    else N12_cost_H2_start - ((t - 2030)/(2050 - 2030)) * (N12_cost_H2_start - N12_cost_H2_end);
+param N12_capex_h2{t in T} :=
+    if t <= 2030 then N12_capex_h2_start
+    else N12_capex_h2_start - ((t - 2030)/(2050 - 2030)) * (N12_capex_h2_start - N12_capex_h2_end);
 include variables.mod;
 
 # Process modules
@@ -75,6 +80,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
