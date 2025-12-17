@@ -1,4 +1,3 @@
-set T ordered := 2025..2050;
 
 # Crude Steel Production
 param base_demand default 144000000;    # Steel production at year 2025
@@ -194,3 +193,4 @@ param N15_ccs_cost_ngdri_end default 85;
 param labor_cost default 20;            
 param maintenance_cost default 15;      
 param other_opex default 10;
+
