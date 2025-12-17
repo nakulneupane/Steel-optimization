@@ -92,6 +92,7 @@ if not RUN_FILE.exists():
             "include parameters.mod;\n"
             "include user_parameters.mod;\n"
             "include main.mod;\n"
+            "solve;\n\n"
             "include cost_report.mod;\n"
             "include emissions_report.mod;\n"
             "include report.mod;\n"
