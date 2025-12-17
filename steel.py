@@ -3,6 +3,7 @@ import subprocess
 import shutil
 import re
 from pathlib import Path
+import pandas as pd
 
 # ==================================================
 # Streamlit setup
@@ -50,16 +51,14 @@ def load_defaults():
     return params
 
 params = load_defaults()
-
 if not params:
     st.error("No parameters declared as `param x default v;`")
     st.stop()
 
 # ==================================================
-# Sidebar controls
+# Sidebar parameters
 # ==================================================
 st.sidebar.header("Model Parameters")
-
 user_params = {
     k: st.sidebar.number_input(k, value=v, format="%.6f")
     for k, v in sorted(params.items())
@@ -75,27 +74,19 @@ def write_user_parameters(p):
             f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Write AMPL run file (FILE-BASED OUTPUT)
+# Write AMPL run file
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
-        f.write(f'''
+        f.write(f"""
 reset;
 option log_file "{AMPL_OUTPUT_FILE.name}";
 option log_flush 1;
 
-printf "\\n=== AMPL START ===\\n";
-
 include parameters.mod;
 include user_parameters.mod;
 include main.mod;
-
-include cost_report.mod;
-include emissions_report.mod;
-include report.mod;
-
-printf "\\n=== AMPL END ===\\n";
-''')
+""")
 
 # ==================================================
 # Run AMPL
@@ -106,101 +97,101 @@ if st.button("Run Optimization", type="primary"):
     write_run_file()
 
     with st.spinner("Running AMPL..."):
-        subprocess.run(
-            [AMPL_EXE, RUN_FILE.name],
-            cwd=BASE_DIR
-        )
+        subprocess.run([AMPL_EXE, RUN_FILE.name], cwd=BASE_DIR)
 
     if not AMPL_OUTPUT_FILE.exists():
-        st.error("AMPL ran but produced no output file.")
+        st.error("AMPL produced no output.")
         st.stop()
 
     st.success("Optimization completed")
 
-# ==================================================
-# ==================================================
-# ==================================================
-# Results viewer (ON-DEMAND)
-# ==================================================
-if AMPL_OUTPUT_FILE.exists():
+    text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
 
+    # ==================================================
+    # PARSE COST REPORT
+    # ==================================================
+    cost_rows = []
+    current_year = None
+
+    for line in text.splitlines():
+        if "Year" in line and "----" in line:
+            current_year = int(re.findall(r"\d{4}", line)[0])
+
+        if "BF-BOF steel:" in line:
+            bf = float(re.findall(r"\$ *([\d.]+)", line)[0])
+        if "Coal DRI–EAF steel:" in line:
+            coal = float(re.findall(r"\$ *([\d.]+)", line)[0])
+        if "NG DRI–EAF steel:" in line:
+            ng = float(re.findall(r"\$ *([\d.]+)", line)[0])
+        if "Scrap–EAF steel:" in line:
+            scrap = float(re.findall(r"\$ *([\d.]+)", line)[0])
+        if "Average Cost:" in line:
+            avg = float(re.findall(r"\$ *([\d.]+)", line)[0])
+
+            cost_rows.append({
+                "Year": current_year,
+                "BF-BOF ($/t)": bf,
+                "Coal DRI ($/t)": coal,
+                "NG DRI ($/t)": ng,
+                "Scrap ($/t)": scrap,
+                "Average ($/t)": avg
+            })
+
+    cost_df = pd.DataFrame(cost_rows)
+
+    # ==================================================
+    # PARSE EMISSIONS REPORT
+    # ==================================================
+    emis_rows = []
+    current_year = None
+    scope1 = scope2 = total = None
+
+    for line in text.splitlines():
+        if "Year" in line and "----" in line:
+            current_year = int(re.findall(r"\d{4}", line)[0])
+
+        if "Average Scope-1 Emissions:" in line:
+            scope1 = float(re.findall(r"([\d.]+)", line)[0])
+        if "Average Scope-2 Emissions:" in line:
+            scope2 = float(re.findall(r"([\d.]+)", line)[0])
+        if "Average System Emissions:" in line:
+            total = float(re.findall(r"([\d.]+)", line)[0])
+
+            emis_rows.append({
+                "Year": current_year,
+                "Avg Scope-1 (tCO₂/t)": scope1,
+                "Avg Scope-2 (tCO₂/t)": scope2,
+                "Avg Total (tCO₂/t)": total
+            })
+
+    emis_df = pd.DataFrame(emis_rows)
+
+    # ==================================================
+    # Results viewer
+    # ==================================================
     st.divider()
-    st.subheader("Results Viewer")
-
     view = st.selectbox(
         "Select result to display",
         [
-            "Cost per ton of steel (2025–2050)",
-            "CO₂ emission per ton of steel",
-            "Production route",
-            "Carbon capture requirement",
+            "Cost per ton of steel",
+            "CO₂ emissions per ton of steel"
         ]
     )
 
-    text = AMPL_OUTPUT_FILE.read_text(
-        encoding="utf-8",
-        errors="ignore"
-    )
-
-    lines = text.splitlines()
-
-    def extract_between(start_cond, end_cond=None):
-        capture = False
-        block = []
-
-        for line in lines:
-            if start_cond(line):
-                capture = True
-
-            if capture:
-                block.append(line)
-
-            if capture and end_cond and end_cond(line):
-                break
-
-        return "\n".join(block).strip()
-
-    # --------------------------------------------------
-    # COST PER TON (FULL cost_report.mod)
-    # --------------------------------------------------
-    if view == "Cost per ton of steel (2025–2050)":
-        st.text(
-            extract_between(
-                lambda l: "ROUTE FRACTIONS + COST PER TON" in l,
-                lambda l: "AMPL END" in l
-            )
+    if view == "Cost per ton of steel":
+        st.subheader("Cost per ton of steel (2025–2050)")
+        st.dataframe(
+            cost_df.style
+            .background_gradient(cmap="Blues", subset=cost_df.columns[1:])
+            .format("{:.2f}"),
+            use_container_width=True
         )
 
-    # --------------------------------------------------
-    # EMISSIONS (FULL emissions_report.mod)
-    # --------------------------------------------------
-    elif view == "CO₂ emission per ton of steel":
-        st.text(
-            extract_between(
-                lambda l: "EMISSIONS" in l,
-                lambda l: "AMPL END" in l
-            )
+    elif view == "CO₂ emissions per ton of steel":
+        st.subheader("CO₂ emissions per ton of steel (2025–2050)")
+        st.dataframe(
+            emis_df.style
+            .background_gradient(cmap="Reds", subset=emis_df.columns[1:])
+            .format("{:.3f}"),
+            use_container_width=True
         )
-
-    # --------------------------------------------------
-    # PRODUCTION ROUTE (TABLE 1 ONLY)
-    # --------------------------------------------------
-    elif view == "Production route":
-        st.text(
-            extract_between(
-                lambda l: "YEAR" in l and "BF-BOF" in l,
-                lambda l: "TABLE 2" in l or "CCS" in l
-            )
-        )
-
-    # --------------------------------------------------
-    # CARBON CAPTURE (TABLE 2)
-    # --------------------------------------------------
-    elif view == "Carbon capture requirement":
-        st.text(
-            extract_between(
-                lambda l: "BF-BOF CCS" in l,
-                None
-            )
-        )
-
