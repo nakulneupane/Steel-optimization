@@ -9,6 +9,12 @@ param N2_cost_h2{t in T} :=
 param N11_capex_ng{t in T} :=
     N11_capex_ng_start - ( (ord(t) - 1) / (card(T) - 1) ) * (N11_capex_ng_start - N11_capex_ng_end);
 
+param N15_ccs_cost_bf{t in T} :=
+    N15_ccs_cost_bf_start - ((ord(t)-1)/(card(T)-1)) * (N15_ccs_cost_bf_start - N15_ccs_cost_bf_end);
+param N15_ccs_cost_cdri{t in T} :=
+    N15_ccs_cost_cdri_start - ((ord(t)-1)/(card(T)-1)) * (N15_ccs_cost_cdri_start - N15_ccs_cost_cdri_end);
+param N15_ccs_cost_ngdri{t in T} :=
+    N15_ccs_cost_ngdri_start - ((ord(t)-1)/(card(T)-1)) * (N15_ccs_cost_ngdri_start - N15_ccs_cost_ngdri_end);
 
 include variables.mod;
 
@@ -69,6 +75,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
