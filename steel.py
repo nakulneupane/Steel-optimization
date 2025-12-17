@@ -117,4 +117,16 @@ if st.button("Run Optimization", type="primary"):
         st.success("Optimization completed")
 
         st.subheader("AMPL Output")
-        st.text(result.stdout)
+
+        output = ""
+        if result.stdout and result.stdout.strip():
+            output += result.stdout
+
+        if result.stderr and result.stderr.strip():
+            output += "\n" + result.stderr
+
+        if not output.strip():
+            st.warning("AMPL ran successfully but produced no console output.")
+        else:
+            st.text(output)
+
