@@ -191,14 +191,12 @@ param N9_capex := 60;             # CAPEX of WHRS per ton of steel manufactured
 
 #Carbon capture
 param N15_ccs_eta := 0.85;                         # Carbon capture efficiency
-param N15_ccs_cost_bf {t in T} :=
-    150 - (150 - 75) * (ord(t)-1) / (card(T)-1);   # Carbon capture cost for blast furnace ($/ton CO2)
-
-param N15_ccs_cost_cdri {t in T} :=
-    150 - (150 - 75) * (ord(t)-1) / (card(T)-1);   # Carbon capture cost for CoalDRI ($/ton CO2)
-
-param N15_ccs_cost_ngdri {t in T} :=
-    180 - (180 - 85) * (ord(t)-1) / (card(T)-1);   # Carbon capture cost for H2-DRI ($/ton CO2)
+param N15_ccs_cost_bf_start default 150;   # $/ton CO2 at first year bf ccs
+param N15_ccs_cost_bf_end   default 75;    # $/ton CO2 at last year bf ccs
+param N15_ccs_cost_cdri_start default 150;  # $/ton CO2 at first year cdri ccs
+param N15_ccs_cost_cdri_end   default 75;   # $/ton CO2 at last year cdri ccs
+param N15_ccs_cost_ngdri_start default 180;  # $/ton CO2 at first year ngdri ccs
+param N15_ccs_cost_ngdri_end   default 85;   # $/ton CO2 at last year ngdri ccs
     
 # Other parameters
 param labor_cost := 20;            # Labor cost per ton crude steel
@@ -212,5 +210,6 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
 
