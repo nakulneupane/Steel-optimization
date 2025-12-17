@@ -176,9 +176,7 @@ param N9_whr :=0.1;               # Adoption rate of whr throughout country (sca
 param N9_eta := 0.25;             # Conversion efficiency from heat to power
 param N9_c := 0;                  # Existing waste heat capacity (kWh)
 param N9_credit_power := 0.02;    # Credit per ton of power generated ($/ton)
-param grid_ef_start_year   default 2025;      # First year for dynamic adjustment
 param grid_ef_start_value  default 0.000757; # Grid emission factor in start year (ton CO2/kWh)
-param grid_ef_end_year     default 2050;      # Last year for interpolation
 param grid_ef_end_value    default 0.0003;   # Grid emission factor in end year (ton CO2/kWh)
 param N9_capex := 60;             # CAPEX of WHRS per ton of steel manufactured
 
@@ -203,6 +201,7 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
 
 
