@@ -12,9 +12,9 @@ for {t in T} {
     printf "\n%4d %8.0f/%5.2f %8.0f/%5.2f %8.0f/%5.2f %8.0f/%5.2f %10.0f/%5.2f %10.0f",
         t,
         steel_bof[t], f_bof[t],                                  # BF-BOF
-        coaldri_output[t], f_cdri[t],                            # Coal DRI
-        ngdri_output[t], f_ngdri[t],                             # NG DRI
-        h2dri_output[t], 1 - f_cdri[t] - f_ngdri[t],            # H2 DRI
+        steel_eaf[t] * f_cdri, f_cdri[t] * f_eaf[t],                            # Coal DRI
+        steel_eaf[t] * f_ngdri[t] , f_ngdri[t] * f_eaf[t],                             # NG DRI
+        steel_eaf[t] * (1 - f_cdri[t] - f_ngdri[t]), (1 - f_cdri[t] - f_ngdri[t]) * * f_eaf[t],            # H2 DRI
         steel_scrap_eaf[t], 1 - f_bof[t] - f_eaf[t],            # Scrap-EAF
         total_steel[t];                                          # Total
 }
@@ -42,4 +42,5 @@ for {t in T} {
 }
 
 printf "\n";
+
 
