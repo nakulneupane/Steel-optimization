@@ -119,6 +119,7 @@ if st.button("Run Optimization", type="primary"):
 
 # ==================================================
 # ==================================================
+# ==================================================
 # Results viewer (ON-DEMAND)
 # ==================================================
 if AMPL_OUTPUT_FILE.exists():
@@ -141,70 +142,65 @@ if AMPL_OUTPUT_FILE.exists():
         errors="ignore"
     )
 
-    # --------------------------------------------------
-    # Helper: extract block between two markers
-    # --------------------------------------------------
-    def extract_block(start_keys, end_keys=None):
-        lines = text.splitlines()
+    lines = text.splitlines()
+
+    def extract_between(start_cond, end_cond=None):
         capture = False
         block = []
 
         for line in lines:
-            if any(k in line for k in start_keys):
+            if start_cond(line):
                 capture = True
 
             if capture:
                 block.append(line)
 
-            if capture and end_keys and any(k in line for k in end_keys):
+            if capture and end_cond and end_cond(line):
                 break
 
         return "\n".join(block).strip()
 
     # --------------------------------------------------
-    # COST REPORT: FULL 2025–2050
+    # COST PER TON (FULL cost_report.mod)
     # --------------------------------------------------
     if view == "Cost per ton of steel (2025–2050)":
         st.text(
-            extract_block(
-                start_keys=["ROUTE FRACTIONS + COST PER TON"],
-                end_keys=["AMPL END"]
+            extract_between(
+                lambda l: "ROUTE FRACTIONS + COST PER TON" in l,
+                lambda l: "AMPL END" in l
             )
         )
 
     # --------------------------------------------------
-    # EMISSIONS REPORT: FULL 2025–2050
+    # EMISSIONS (FULL emissions_report.mod)
     # --------------------------------------------------
     elif view == "CO₂ emission per ton of steel":
         st.text(
-            extract_block(
-                start_keys=["EMISSIONS"],
-                end_keys=["ROUTE FRACTIONS", "AMPL END"]
+            extract_between(
+                lambda l: "EMISSIONS" in l,
+                lambda l: "AMPL END" in l
             )
         )
 
     # --------------------------------------------------
-    # PRODUCTION ROUTE: FIRST TABLE ONLY
+    # PRODUCTION ROUTE (TABLE 1 ONLY)
     # --------------------------------------------------
     elif view == "Production route":
         st.text(
-            extract_block(
-                start_keys=["PRODUCTION ROUTE", "ROUTE SHARE"],
-                end_keys=["COST", "EMISSIONS"]
+            extract_between(
+                lambda l: "YEAR" in l and "BF-BOF" in l,
+                lambda l: "TABLE 2" in l or "CCS" in l
             )
         )
 
     # --------------------------------------------------
-    # CARBON CAPTURE: KEEP CURRENT BEHAVIOR
+    # CARBON CAPTURE (TABLE 2)
     # --------------------------------------------------
     elif view == "Carbon capture requirement":
         st.text(
-            extract_block(
-                start_keys=["CARBON CAPTURE", "CCS"],
-                end_keys=["AMPL END"]
+            extract_between(
+                lambda l: "BF-BOF CCS" in l,
+                None
             )
         )
 
-
-    elif view == "Carbon capture requirement":
-        st.text(extract_lines(["CCS", "Carbon capture"]))
