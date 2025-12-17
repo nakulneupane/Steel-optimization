@@ -31,6 +31,8 @@ param grid_ef{t in T} :=
     else grid_ef_start_value
          - ( (t - grid_ef_start_year) / (grid_ef_end_year - grid_ef_start_year) ) 
            * (grid_ef_start_value - grid_ef_end_value);
+param scrap_limit{t in T} :=
+    scrap_base * (1 + scrap_rate) ** (ord(t) - 1); # Scrap availability cap 
 include variables.mod;
 
 # Process modules
@@ -90,6 +92,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
