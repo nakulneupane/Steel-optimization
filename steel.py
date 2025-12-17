@@ -56,7 +56,6 @@ if not params:
     st.error("No parameters declared as `param x default v;`")
     st.stop()
 
-# 🔹 H2 start year (used ONLY for emission display)
 H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
@@ -112,7 +111,7 @@ if st.button("Run Optimization", type="primary"):
     lines = text.splitlines()
 
     # ==================================================
-    # COST PER TON
+    # COST PER TON (UNCHANGED)
     # ==================================================
     cost_rows = []
     year = None
@@ -154,7 +153,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # EMISSIONS PER TON (TOTAL ONLY)
+    # EMISSIONS PER TON (FIXED H₂ PARSING)
     # ==================================================
     emis_rows = []
     year = None
@@ -172,8 +171,11 @@ if st.button("Run Optimization", type="primary"):
         if "NG DRI-EAF Total per ton:" in l:
             ng = float(re.findall(r"([\d.]+)", l)[0])
         if "H2 DRI-EAF Total per ton:" in l:
-            val = float(re.findall(r"([\d.]+)", l)[0])
-            h2 = val if year >= H2_START_YEAR else np.nan
+            m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
+            if m and year >= H2_START_YEAR:
+                h2 = float(m.group(1))
+            else:
+                h2 = np.nan
         if "Scrap-EAF Total per ton:" in l:
             scrap = float(re.findall(r"([\d.]+)", l)[0])
         if "Average System Emissions:" in l:
@@ -197,7 +199,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # PRODUCTION ROUTE (12 columns)
+    # PRODUCTION ROUTE (UNCHANGED)
     # ==================================================
     prod_rows = []
     capture = False
@@ -237,7 +239,7 @@ if st.button("Run Optimization", type="primary"):
     )
 
     # ==================================================
-    # CARBON CAPTURE (8 columns)
+    # CARBON CAPTURE (UNCHANGED)
     # ==================================================
     ccs_rows = []
 
