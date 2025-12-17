@@ -118,6 +118,7 @@ if st.button("Run Optimization", type="primary"):
     st.success("Optimization completed")
 
 # ==================================================
+# ==================================================
 # Results viewer (ON-DEMAND)
 # ==================================================
 if AMPL_OUTPUT_FILE.exists():
@@ -140,31 +141,70 @@ if AMPL_OUTPUT_FILE.exists():
         errors="ignore"
     )
 
-    def extract_lines(keywords):
-        lines = []
+    # --------------------------------------------------
+    # Helper: extract block between two markers
+    # --------------------------------------------------
+    def extract_block(start_keys, end_keys=None):
+        lines = text.splitlines()
         capture = False
+        block = []
 
-        for line in text.splitlines():
-            if any(k in line for k in keywords):
+        for line in lines:
+            if any(k in line for k in start_keys):
                 capture = True
 
             if capture:
-                lines.append(line)
+                block.append(line)
 
-            if capture and line.strip().startswith("-------------------- Year"):
-                if len(lines) > 5:
-                    break
+            if capture and end_keys and any(k in line for k in end_keys):
+                break
 
-        return "\n".join(lines).strip()
+        return "\n".join(block).strip()
 
+    # --------------------------------------------------
+    # COST REPORT: FULL 2025–2050
+    # --------------------------------------------------
     if view == "Cost per ton of steel (2025–2050)":
-        st.text(extract_lines(["COST PER TON", "Average Cost"]))
+        st.text(
+            extract_block(
+                start_keys=["ROUTE FRACTIONS + COST PER TON"],
+                end_keys=["AMPL END"]
+            )
+        )
 
+    # --------------------------------------------------
+    # EMISSIONS REPORT: FULL 2025–2050
+    # --------------------------------------------------
     elif view == "CO₂ emission per ton of steel":
-        st.text(extract_lines(["EMISSIONS", "tCO2"]))
+        st.text(
+            extract_block(
+                start_keys=["EMISSIONS"],
+                end_keys=["ROUTE FRACTIONS", "AMPL END"]
+            )
+        )
 
+    # --------------------------------------------------
+    # PRODUCTION ROUTE: FIRST TABLE ONLY
+    # --------------------------------------------------
     elif view == "Production route":
-        st.text(extract_lines(["PRODUCTION FRACTIONS", "DRI FRACTION SPLIT"]))
+        st.text(
+            extract_block(
+                start_keys=["PRODUCTION ROUTE", "ROUTE SHARE"],
+                end_keys=["COST", "EMISSIONS"]
+            )
+        )
+
+    # --------------------------------------------------
+    # CARBON CAPTURE: KEEP CURRENT BEHAVIOR
+    # --------------------------------------------------
+    elif view == "Carbon capture requirement":
+        st.text(
+            extract_block(
+                start_keys=["CARBON CAPTURE", "CCS"],
+                end_keys=["AMPL END"]
+            )
+        )
+
 
     elif view == "Carbon capture requirement":
         st.text(extract_lines(["CCS", "Carbon capture"]))
