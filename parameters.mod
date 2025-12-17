@@ -113,9 +113,8 @@ param N11_ore_dri := 0.1;      # Iron ore per ton dri (ton/ton)
 param N11_cost_power := 0.08;  # Cost per kWh of power ($/kWh)
 param N11_cost_NG := 450;      # Cost per ton of NG ($/ton)
 param N11_cost_lumpore := 70;  # Cost per ton of lumpore ($/ton)
-param N11_capex_ng{t in T} :=
-    if t <= 2025 then 130
-    else 130 - ( (t - 2025) / (2050 - 2025) ) * (130 - 90);  # Dynamic CAPEX of NG-DRI plant per ton crude steel ($/ton)
+param N11_capex_ng_start default 130;   # CAPEX at 2025
+param N11_capex_ng_end   default 90;    # CAPEX at 2050
 param ng_base := 10000000;      # Natural gas available for steel sector in 2025 (tons)
 param ng_growth := 0.10;        # Annual growth rate of natural gas availability
 
@@ -213,4 +212,5 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
