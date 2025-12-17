@@ -56,9 +56,8 @@ param N2_cost_pci := 120;        # Cost per ton of pulverized coal ($/ton)
 param N2_cost_power := 0.08;     # Cost per kWh of power ($/kWh)
 param N2_cost_lime := 60;        # Cost per ton of lime ($/ton)
 param N2_cost_biochar := 75;     # Cost per ton of biochar ($/ton)
-param N2_cost_h2{t in T} :=
-    if t <= 2030 then 4500
-    else 4500 - ( (t - 2030) / (2050 - 2030) ) * (4500 - 1500);  # Dynamic cost of hydrogen ($/ton)
+param N2_cost_h2_start default 4500;   # Cost at start year
+param N2_cost_h2_end   default 1500;   # Cost at end year
 param N2_credit_slag := 15;      # Cost per ton of slag ($/ton)
 param N2_capex := 100;           # CAPEX of blast furnace per ton of crude steel ($/ton)
 
@@ -214,3 +213,4 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
