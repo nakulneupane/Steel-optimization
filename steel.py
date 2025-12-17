@@ -15,10 +15,9 @@ st.caption("Edit parameters → Run AMPL → View results")
 # Paths (repo root)
 # ==================================================
 BASE_DIR = Path(__file__).parent
-
+MAIN_MOD_FILE = BASE_DIR / "main.mod"
 PARAM_FILE = BASE_DIR / "parameters.mod"
 USER_PARAM_FILE = BASE_DIR / "user_parameters.mod"
-MAIN_MOD_FILE = BASE_DIR / "main.mod"
 RUN_FILE = BASE_DIR / "run_ampl.run"
 RESULTS_FILE = BASE_DIR / "results.txt"
 
