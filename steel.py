@@ -23,6 +23,7 @@ RUN_FILE = BASE_DIR / "run_ampl.run"
 REQUIRED_FILES = [
     "parameters.mod",
     "main.mod",
+    "variables.mod",
     "cost_report.mod",
     "emissions_report.mod",
     "report.mod",
@@ -94,6 +95,7 @@ def write_run_file():
             "include parameters.mod;\n"
             "include user_parameters.mod;\n"
             "include main.mod;\n\n"
+            "include variables.mod;\n"
             "solve;\n\n"
             'printf "\\n=== AMPL SOLVE COMPLETED ===\\n";\n\n'
             "include cost_report.mod;\n"
