@@ -113,4 +113,11 @@ if st.button("Run Optimization", type="primary"):
     st.success("Optimization completed")
 
     st.subheader("AMPL Output")
-    st.text(AMPL_OUTPUT_FILE.read_text())
+
+    output_text = AMPL_OUTPUT_FILE.read_text(
+        encoding="utf-8",
+        errors="ignore"
+    )
+
+    st.text(output_text)
+
