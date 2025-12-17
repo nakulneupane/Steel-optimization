@@ -21,6 +21,12 @@ param N12_cost_H2{t in T} :=
 param N12_capex_h2{t in T} :=
     if t <= 2030 then N12_capex_h2_start
     else N12_capex_h2_start - ((t - 2030)/(2050 - 2030)) * (N12_capex_h2_start - N12_capex_h2_end);
+param h2_avail{t in T} :=
+    if t < h2_start_year then 0
+    else h2_base
+         * (1 + h2_slow_growth)^( min(t, h2_intermediate_year) - h2_start_year )
+         * (1 + h2_fast_growth)^( max(t - h2_intermediate_year, 0) );
+
 include variables.mod;
 
 # Process modules
@@ -80,6 +86,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
