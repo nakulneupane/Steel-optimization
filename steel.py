@@ -59,6 +59,7 @@ if not params:
 # Sidebar controls
 # ==================================================
 st.sidebar.header("Model Parameters")
+
 user_params = {
     k: st.sidebar.number_input(k, value=v, format="%.6f")
     for k, v in sorted(params.items())
@@ -89,6 +90,10 @@ include parameters.mod;
 include user_parameters.mod;
 include main.mod;
 
+include cost_report.mod;
+include emissions_report.mod;
+include report.mod;
+
 printf "\\n=== AMPL END ===\\n";
 ''')
 
@@ -101,7 +106,7 @@ if st.button("Run Optimization", type="primary"):
     write_run_file()
 
     with st.spinner("Running AMPL..."):
-        result = subprocess.run(
+        subprocess.run(
             [AMPL_EXE, RUN_FILE.name],
             cwd=BASE_DIR
         )
@@ -112,12 +117,54 @@ if st.button("Run Optimization", type="primary"):
 
     st.success("Optimization completed")
 
-    st.subheader("AMPL Output")
+# ==================================================
+# Results viewer (ON-DEMAND)
+# ==================================================
+if AMPL_OUTPUT_FILE.exists():
 
-    output_text = AMPL_OUTPUT_FILE.read_text(
+    st.divider()
+    st.subheader("Results Viewer")
+
+    view = st.selectbox(
+        "Select result to display",
+        [
+            "Cost per ton of steel (2025–2050)",
+            "CO₂ emission per ton of steel",
+            "Production route",
+            "Carbon capture requirement",
+        ]
+    )
+
+    text = AMPL_OUTPUT_FILE.read_text(
         encoding="utf-8",
         errors="ignore"
     )
 
-    st.text(output_text)
+    def extract_lines(keywords):
+        lines = []
+        capture = False
 
+        for line in text.splitlines():
+            if any(k in line for k in keywords):
+                capture = True
+
+            if capture:
+                lines.append(line)
+
+            if capture and line.strip().startswith("-------------------- Year"):
+                if len(lines) > 5:
+                    break
+
+        return "\n".join(lines).strip()
+
+    if view == "Cost per ton of steel (2025–2050)":
+        st.text(extract_lines(["COST PER TON", "Average Cost"]))
+
+    elif view == "CO₂ emission per ton of steel":
+        st.text(extract_lines(["EMISSIONS", "tCO2"]))
+
+    elif view == "Production route":
+        st.text(extract_lines(["PRODUCTION FRACTIONS", "DRI FRACTION SPLIT"]))
+
+    elif view == "Carbon capture requirement":
+        st.text(extract_lines(["CCS", "Carbon capture"]))
