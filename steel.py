@@ -180,18 +180,18 @@ if st.button("Run Optimization", type="primary"):
                  use_container_width=True)
 
     # ==================================================
-    # PRODUCTION ROUTE (FIXED)
+    # PRODUCTION ROUTE (TOTAL FIXED)
     # ==================================================
     prod_rows = []
 
     for l in lines:
         if re.match(r"\d{4}\s", l):
             pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
-            nums = re.findall(r"\d{4}|\d{6,}", l)
+            total_match = re.search(r"\s(\d+)\s*$", l)
 
-            if len(pairs) == 5 and len(nums) >= 7:
+            if len(pairs) == 5 and total_match:
                 prod_rows.append({
-                    "Year": int(nums[0]),
+                    "Year": int(l[:4]),
                     "BF-BOF (t)": float(pairs[0][0]),
                     "BF-BOF frac": float(pairs[0][1]),
                     "Coal DRI (t)": float(pairs[1][0]),
@@ -202,7 +202,7 @@ if st.button("Run Optimization", type="primary"):
                     "H₂ DRI frac": float(pairs[3][1]),
                     "Scrap-EAF (t)": float(pairs[4][0]),
                     "Scrap-EAF frac": float(pairs[4][1]),
-                    "Total steel (t)": float(nums[-1]),
+                    "Total steel (t)": float(total_match.group(1)),
                 })
 
     df_prod = pd.DataFrame(prod_rows)
@@ -213,25 +213,25 @@ if st.button("Run Optimization", type="primary"):
                  use_container_width=True)
 
     # ==================================================
-    # CARBON CAPTURE (FIXED)
+    # CARBON CAPTURE (TOTAL FIXED)
     # ==================================================
     ccs_rows = []
 
     for l in lines:
         if re.match(r"\d{4}\s", l):
             pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
-            nums = re.findall(r"\d{4}|\d{6,}", l)
+            total_match = re.search(r"\s(\d+)\s*$", l)
 
-            if len(pairs) == 3 and len(nums) >= 5:
+            if len(pairs) == 3 and total_match:
                 ccs_rows.append({
-                    "Year": int(nums[0]),
+                    "Year": int(l[:4]),
                     "BF-BOF CCS (t)": float(pairs[0][0]),
                     "BF-BOF CCS frac": float(pairs[0][1]),
                     "Coal DRI CCS (t)": float(pairs[1][0]),
                     "Coal DRI CCS frac": float(pairs[1][1]),
                     "NG DRI CCS (t)": float(pairs[2][0]),
                     "NG DRI CCS frac": float(pairs[2][1]),
-                    "Total CCS (t)": float(nums[-1]),
+                    "Total CCS (t)": float(total_match.group(1)),
                 })
 
     df_ccs = pd.DataFrame(ccs_rows)
