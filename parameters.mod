@@ -124,13 +124,11 @@ param N12_h2_dri := 0.13;       # Hydrogen per ton DRI (ton/ton)
 param N12_pel_dri := 1.5;       # Pellets per ton dri (ton/ton)
 param N12_ore_dri := 0.1;       # Iron ore per ton dri (ton/ton)
 param N12_cost_power := 0.08;   # Cost per kWh of power ($/kWh)
-param N12_cost_H2{t in T} :=
-    if t <= 2030 then 4500
-    else 4500 - ( (t - 2030) / (2050 - 2030) ) * (4500 - 1500);  # Dynamic price of H2 ($/ton)
+param N12_cost_H2_start default 4500;   # H2 $/ton at first year (2030)
+param N12_cost_H2_end   default 1500;   # H2 $/ton at last year (2050)
+param N12_capex_h2_start default 170;   # H2 dri capex $/ton at first year (2030)
+param N12_capex_h2_end   default 100;   # H2 dri capex $/ton at last year (2050)
 param N12_cost_lumpore := 70;   # Cost per ton of lumpore ($/ton)
-param N12_capex_h2{t in T} :=
-    if t <= 2030 then 170
-    else 170 - ( (t - 2030) / (2050 - 2030) ) * (170 - 100); # Dynamic CAPEX of H2-DRI plant per ton crude steel ($/ton)
 param h2_start_year := 2030;    # Year from when hydrogen becomes available for iron and steel sector
 param h2_slow_growth := 0.20;   # Assumed slow growth rate of hydrogen in initial years
 param h2_fast_growth := 0.40;   # Assumed fast growth rate of hydrogen in later years
@@ -210,6 +208,7 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
 
 
