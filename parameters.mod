@@ -169,8 +169,6 @@ param N10_capex := 70;           # CAPEX of EAF (Scrap-based) plant per ton of c
 param scrap_base  := 32000000;   # Scrap available  in 2025 (tons)
 param scrap_rate  := 0.064;      # Annual growth rate of scrap
 param scrap_years := 25;         # Total years in timeseries
-param scrap_limit{t in T} :=
-    scrap_base * (1 + scrap_rate) ** (ord(t) - 1); # Scrap availability cap 
 
 # Waste Heat Recovery
 param N9_u :=7884;                # Utilization hours (hrs/year)
@@ -205,6 +203,7 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
 
 
