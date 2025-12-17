@@ -133,11 +133,7 @@ param h2_start_year := 2030;    # Year from when hydrogen becomes available for 
 param h2_slow_growth := 0.20;   # Assumed slow growth rate of hydrogen in initial years
 param h2_fast_growth := 0.40;   # Assumed fast growth rate of hydrogen in later years
 param h2_base := 500000;        # Tons of hydrogen that might be available in start year of hydrogen (tons)
-param h2_avail{t in T} :=
-    if t < h2_start_year then 0
-    else h2_base
-         * (1 + h2_slow_growth)^( min(t,2035) - h2_start_year )
-         * (1 + h2_fast_growth)^( max(t-2035, 0) );   # Dynamic availability cap of hydrogen over the years (tons)
+param h2_intermediate_year default 2035; # Year when fast growth starts
 
 # EAF (DRI-Based)
 param N4_e_eaf := 650;          # Electricity per ton steel produced from EAF (Kwh/ton)
@@ -208,6 +204,7 @@ param other_opex := 10;            # Other OPEX per ton crude steel
     
 
     
+
 
 
 
