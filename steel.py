@@ -52,10 +52,6 @@ def load_defaults():
     return params
 
 params = load_defaults()
-if not params:
-    st.error("No parameters declared as `param x default v;`")
-    st.stop()
-
 H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
@@ -101,17 +97,11 @@ if st.button("Run Optimization", type="primary"):
     with st.spinner("Running AMPL optimization..."):
         subprocess.run([AMPL_EXE, RUN_FILE.name], cwd=BASE_DIR)
 
-    if not AMPL_OUTPUT_FILE.exists():
-        st.error("AMPL produced no output.")
-        st.stop()
-
-    st.success("Optimization completed")
-
     text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
     lines = text.splitlines()
 
     # ==================================================
-    # COST PER TON (UNCHANGED – WORKING)
+    # COST PER TON (UNCHANGED)
     # ==================================================
     cost_rows = []
     year = None
@@ -139,21 +129,18 @@ if st.button("Run Optimization", type="primary"):
                 "BF-BOF ($/t)": bf,
                 "Coal DRI-EAF ($/t)": coal,
                 "NG DRI-EAF ($/t)": ng,
-                "H₂ DRI-EAF ($/t)": h2 if year >= H2_START_YEAR else np.nan,
+                "H₂ DRI-EAF ($/t)": h2,
                 "Scrap-EAF ($/t)": scrap,
                 "Average ($/t)": avg
             })
 
     df_cost = pd.DataFrame(cost_rows)
-
     st.subheader("Cost per ton of steel (2025–2050)")
-    st.dataframe(
-        df_cost.style.format("{:.2f}").background_gradient(cmap="Blues"),
-        use_container_width=True
-    )
+    st.dataframe(df_cost.style.format("{:.2f}").background_gradient(cmap="Blues"),
+                 use_container_width=True)
 
     # ==================================================
-    # EMISSIONS PER TON (TOTAL ROUTE ONLY – FIXED)
+    # EMISSIONS PER TON (UNCHANGED)
     # ==================================================
     emis_rows = []
     year = None
@@ -165,18 +152,18 @@ if st.button("Run Optimization", type="primary"):
             bf = coal = ng = h2 = scrap = avg = np.nan
 
         if "BF-BOF Total per ton:" in l:
-            bf = float(re.findall(r"([\d.]+)", l)[-1])
+            bf = float(re.findall(r"([\d.]+)", l)[0])
         if "Coal DRI-EAF Total per ton:" in l:
-            coal = float(re.findall(r"([\d.]+)", l)[-1])
+            coal = float(re.findall(r"([\d.]+)", l)[0])
         if "NG DRI-EAF Total per ton:" in l:
-            ng = float(re.findall(r"([\d.]+)", l)[-1])
+            ng = float(re.findall(r"([\d.]+)", l)[0])
         if "H2 DRI-EAF Total per ton:" in l:
-            val = float(re.findall(r"([\d.]+)", l)[-1])
-            h2 = val if year >= H2_START_YEAR else np.nan
+            m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
+            h2 = float(m.group(1)) if (m and year >= H2_START_YEAR) else np.nan
         if "Scrap-EAF Total per ton:" in l:
-            scrap = float(re.findall(r"([\d.]+)", l)[-1])
+            scrap = float(re.findall(r"([\d.]+)", l)[0])
         if "Average System Emissions:" in l:
-            avg = float(re.findall(r"([\d.]+)", l)[-1])
+            avg = float(re.findall(r"([\d.]+)", l)[0])
             emis_rows.append({
                 "Year": year,
                 "BF-BOF (tCO₂/t)": bf,
@@ -188,84 +175,68 @@ if st.button("Run Optimization", type="primary"):
             })
 
     df_emis = pd.DataFrame(emis_rows)
-
     st.subheader("CO₂ emissions per ton of steel (2025–2050)")
-    st.dataframe(
-        df_emis.style.format("{:.3f}").background_gradient(cmap="Reds"),
-        use_container_width=True
-    )
+    st.dataframe(df_emis.style.format("{:.3f}").background_gradient(cmap="Reds"),
+                 use_container_width=True)
 
     # ==================================================
-    # PRODUCTION ROUTE (ROBUST PARSING – NO ERRORS)
+    # PRODUCTION ROUTE (FIXED)
     # ==================================================
     prod_rows = []
-    capture = False
 
     for l in lines:
-        if "YEAR" in l and "BF-BOF" in l:
-            capture = True
-            continue
-        if capture and "CCS" in l:
-            break
-        if capture:
-            parts = re.findall(r"(\d+|\d+/\d+\.\d+)", l)
-            if len(parts) >= 7:
-                try:
-                    prod_rows.append({
-                        "Year": int(parts[0]),
-                        "BF-BOF (t)": float(parts[1].split("/")[0]),
-                        "BF-BOF frac": float(parts[1].split("/")[1]),
-                        "Coal DRI (t)": float(parts[2].split("/")[0]),
-                        "Coal DRI frac": float(parts[2].split("/")[1]),
-                        "NG DRI (t)": float(parts[3].split("/")[0]),
-                        "NG DRI frac": float(parts[3].split("/")[1]),
-                        "H₂ DRI (t)": float(parts[4].split("/")[0]),
-                        "H₂ DRI frac": float(parts[4].split("/")[1]),
-                        "Scrap-EAF (t)": float(parts[5].split("/")[0]),
-                        "Scrap-EAF frac": float(parts[5].split("/")[1]),
-                        "Total steel (t)": float(parts[6]),
-                    })
-                except:
-                    pass
+        if re.match(r"\d{4}\s", l):
+            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+            nums = re.findall(r"\d{4}|\d{6,}", l)
+
+            if len(pairs) == 5 and len(nums) >= 7:
+                prod_rows.append({
+                    "Year": int(nums[0]),
+                    "BF-BOF (t)": float(pairs[0][0]),
+                    "BF-BOF frac": float(pairs[0][1]),
+                    "Coal DRI (t)": float(pairs[1][0]),
+                    "Coal DRI frac": float(pairs[1][1]),
+                    "NG DRI (t)": float(pairs[2][0]),
+                    "NG DRI frac": float(pairs[2][1]),
+                    "H₂ DRI (t)": float(pairs[3][0]),
+                    "H₂ DRI frac": float(pairs[3][1]),
+                    "Scrap-EAF (t)": float(pairs[4][0]),
+                    "Scrap-EAF frac": float(pairs[4][1]),
+                    "Total steel (t)": float(nums[-1]),
+                })
 
     df_prod = pd.DataFrame(prod_rows)
-
     st.subheader("Production route (tons & fractions)")
-    st.dataframe(
-        df_prod.style
-        .format("{:.2f}", subset=[c for c in df_prod.columns if "frac" in c])
-        .background_gradient(cmap="Greens"),
-        use_container_width=True
-    )
+    st.dataframe(df_prod.style
+                 .format("{:.2f}", subset=[c for c in df_prod.columns if "frac" in c])
+                 .background_gradient(cmap="Greens"),
+                 use_container_width=True)
 
     # ==================================================
-    # CARBON CAPTURE (ROBUST PARSING)
+    # CARBON CAPTURE (FIXED)
     # ==================================================
     ccs_rows = []
 
     for l in lines:
-        parts = re.findall(r"(\d+|\d+/\d+\.\d+)", l)
-        if len(parts) == 5:
-            try:
+        if re.match(r"\d{4}\s", l):
+            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+            nums = re.findall(r"\d{4}|\d{6,}", l)
+
+            if len(pairs) == 3 and len(nums) >= 5:
                 ccs_rows.append({
-                    "Year": int(parts[0]),
-                    "BF-BOF CCS (t)": float(parts[1].split("/")[0]),
-                    "BF-BOF CCS frac": float(parts[1].split("/")[1]),
-                    "Coal DRI CCS (t)": float(parts[2].split("/")[0]),
-                    "Coal DRI CCS frac": float(parts[2].split("/")[1]),
-                    "NG DRI CCS (t)": float(parts[3].split("/")[0]),
-                    "NG DRI CCS frac": float(parts[3].split("/")[1]),
-                    "Total CCS (t)": float(parts[4]),
+                    "Year": int(nums[0]),
+                    "BF-BOF CCS (t)": float(pairs[0][0]),
+                    "BF-BOF CCS frac": float(pairs[0][1]),
+                    "Coal DRI CCS (t)": float(pairs[1][0]),
+                    "Coal DRI CCS frac": float(pairs[1][1]),
+                    "NG DRI CCS (t)": float(pairs[2][0]),
+                    "NG DRI CCS frac": float(pairs[2][1]),
+                    "Total CCS (t)": float(nums[-1]),
                 })
-            except:
-                pass
 
     df_ccs = pd.DataFrame(ccs_rows)
-
     st.subheader("Carbon capture requirement (tons & fractions)")
-    st.dataframe(
-        df_ccs.style
-        .format("{:.2f}", subset=[c for c in df_ccs.columns if "frac" in c])
-        .background_gradient(cmap="Purples"),
-        use_container_width=True
-    )
+    st.dataframe(df_ccs.style
+                 .format("{:.2f}", subset=[c for c in df_ccs.columns if "frac" in c])
+                 .background_gradient(cmap="Purples"),
+                 use_container_width=True)
