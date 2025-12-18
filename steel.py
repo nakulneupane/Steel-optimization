@@ -83,13 +83,44 @@ for param_name in sorted(params.keys()):
     )
 
 # ==================================================
+# Create a custom main.mod that doesn't include parameters.mod
+# ==================================================
+def create_custom_main():
+    """Create a main.mod file that doesn't include parameters.mod
+    since we'll include it separately with overrides"""
+    
+    try:
+        with open(MAIN_MOD_FILE, 'r') as f:
+            content = f.read()
+        
+        # Remove the include parameters.mod line
+        lines = content.split('\n')
+        new_lines = []
+        
+        for line in lines:
+            # Skip the include parameters.mod line
+            if 'include parameters.mod;' in line:
+                continue
+            new_lines.append(line)
+        
+        # Write to a temporary file
+        temp_main = BASE_DIR / "temp_main.mod"
+        with open(temp_main, 'w') as f:
+            f.write('\n'.join(new_lines))
+        
+        return temp_main
+    
+    except Exception as e:
+        st.error(f"Error creating custom main.mod: {e}")
+        return MAIN_MOD_FILE
+
+# ==================================================
 # Write user parameters file
 # ==================================================
 def write_user_params():
     """Write user parameters as let statements to override defaults"""
     with open(USER_PARAM_FILE, "w") as f:
-        f.write("# User parameter overrides\n")
-        f.write("# This file is included after parameters.mod\n\n")
+        f.write("# User parameter overrides\n\n")
         for param_name, value in user_params.items():
             f.write(f"let {param_name} := {value};\n")
 
@@ -97,26 +128,31 @@ def write_user_params():
 # Create AMPL run file
 # ==================================================
 def write_run_file():
-    """Create AMPL run script that properly includes user parameters"""
+    """Create AMPL run script"""
+    
+    # Create custom main.mod without parameters.mod include
+    custom_main = create_custom_main()
+    
     with open(RUN_FILE, "w") as f:
         f.write(f"""# AMPL run script
 reset;
 
-# First include the default parameters
+# First include the parameters
 include "{PARAM_FILE.name}";
 
 # Then override with user parameters
 include "{USER_PARAM_FILE.name}";
 
-# Now run the main model
-include "{MAIN_MOD_FILE.name}";
+# Now include the custom main.mod (without parameters.mod include)
+include "{custom_main.name}";
 
-# Save output
-option log_file "{AMPL_OUTPUT_FILE.name}";
+# Solve
 solve;
 
-# Display some results
-display total_cost, total_steel, total_emissions;
+# Display results
+display total_cost;
+display total_steel;
+display total_emissions;
 """)
 
 # ==================================================
@@ -132,7 +168,7 @@ def parse_results():
         
         # Debug: Show raw output
         with st.expander("View AMPL Output"):
-            st.code(text[:5000] + "..." if len(text) > 5000 else text)
+            st.code(text)
         
         # Try to find cost and emissions data
         cost_rows = []
@@ -148,52 +184,79 @@ def parse_results():
                 if match:
                     year = int(match.group(1))
                     cost = float(match.group(2))
-                    # Try to find corresponding steel production
-                    steel = 1.0  # Default
-                    for steel_line in lines:
-                        if f'total_steel[{year}]' in steel_line and ':=' in steel_line:
-                            steel_match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', steel_line)
-                            if steel_match and int(steel_match.group(1)) == year:
-                                steel = float(steel_match.group(2))
-                                break
-                    
-                    if steel > 0:
-                        cost_rows.append({
-                            'Year': year,
-                            'Average ($/t)': cost / steel
-                        })
+                    cost_rows.append({
+                        'Year': year,
+                        'Total Cost': cost
+                    })
+        
+        # Simple parsing for steel production
+        steel_data = {}
+        for line in lines:
+            if 'total_steel[' in line and ':=' in line:
+                match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', line)
+                if match:
+                    year = int(match.group(1))
+                    steel = float(match.group(2))
+                    steel_data[year] = steel
         
         # Simple parsing for emissions
         for line in lines:
             if 'total_emissions[' in line and ':=' in line:
-                # Example: total_emissions[2025] := 123.456
                 match = re.search(r'total_emissions\[(\d+)\]\s*:=\s*([\d.]+)', line)
                 if match:
                     year = int(match.group(1))
                     emissions = float(match.group(2))
-                    # Try to find corresponding steel production
-                    steel = 1.0
-                    for steel_line in lines:
-                        if f'total_steel[{year}]' in steel_line and ':=' in steel_line:
-                            steel_match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', steel_line)
-                            if steel_match and int(steel_match.group(1)) == year:
-                                steel = float(steel_match.group(2))
-                                break
-                    
-                    if steel > 0:
-                        emis_rows.append({
-                            'Year': year,
-                            'Average (tCO₂/t)': emissions / steel
-                        })
+                    emis_rows.append({
+                        'Year': year,
+                        'Total Emissions': emissions
+                    })
         
-        df_cost = pd.DataFrame(cost_rows) if cost_rows else pd.DataFrame()
-        df_emis = pd.DataFrame(emis_rows) if emis_rows else pd.DataFrame()
+        # Create dataframes with per-ton calculations
+        cost_df = pd.DataFrame(cost_rows) if cost_rows else pd.DataFrame()
+        emis_df = pd.DataFrame(emis_rows) if emis_rows else pd.DataFrame()
         
-        return df_cost, df_emis
+        # Calculate per-ton values
+        if not cost_df.empty and steel_data:
+            cost_df['Steel Production'] = cost_df['Year'].map(steel_data)
+            cost_df['Cost per ton ($/t)'] = cost_df.apply(
+                lambda row: row['Total Cost'] / row['Steel Production'] if row['Steel Production'] > 0 else 0,
+                axis=1
+            )
+        
+        if not emis_df.empty and steel_data:
+            emis_df['Steel Production'] = emis_df['Year'].map(steel_data)
+            emis_df['Emissions per ton (tCO₂/t)'] = emis_df.apply(
+                lambda row: row['Total Emissions'] / row['Steel Production'] if row['Steel Production'] > 0 else 0,
+                axis=1
+            )
+        
+        return cost_df, emis_df
         
     except Exception as e:
         st.error(f"Error parsing results: {e}")
         return None, None
+
+# ==================================================
+# Clean up temporary files
+# ==================================================
+def cleanup():
+    """Clean up temporary files"""
+    temp_files = [
+        USER_PARAM_FILE,
+        RUN_FILE,
+        AMPL_OUTPUT_FILE,
+        BASE_DIR / "temp_main.mod"
+    ]
+    
+    for file in temp_files:
+        if file.exists():
+            try:
+                file.unlink()
+            except:
+                pass
+
+# Clean up on start
+cleanup()
 
 # ==================================================
 # Run optimization
@@ -203,6 +266,9 @@ if st.button("Run Optimization"):
         st.error("No parameters to optimize")
         st.stop()
     
+    # Clean up first
+    cleanup()
+    
     # Write parameter files
     write_user_params()
     write_run_file()
@@ -210,10 +276,6 @@ if st.button("Run Optimization"):
     # Run AMPL
     with st.spinner("Running AMPL..."):
         try:
-            # Clean previous output
-            if AMPL_OUTPUT_FILE.exists():
-                AMPL_OUTPUT_FILE.unlink()
-            
             # Run AMPL
             result = subprocess.run(
                 [AMPL_EXE, RUN_FILE.name],
@@ -248,10 +310,6 @@ if st.button("Run Optimization"):
             
         except Exception as e:
             st.error(f"Error running optimization: {e}")
-
-# ==================================================
-# Display current parameters
-# ==================================================
-with st.expander("Current Parameter Values"):
-    param_df = pd.DataFrame.from_dict(user_params, orient='index', columns=['Value'])
-    st.dataframe(param_df)
+        finally:
+            # Clean up temporary files
+            cleanup()
