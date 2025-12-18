@@ -263,7 +263,7 @@ st.markdown("""
 # Optimization Execution Section
 # ==================================================
 st.markdown("---")
-st.markdown("### 🚀 Optimization Execution")
+st.markdown("### Optimization Execution")
 
 col1, col2 = st.columns([3, 1])
 with col1:
@@ -277,19 +277,101 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
     # Write parameter files
     write_user_parameters(user_params)
     write_run_file()
-    
-    # Show progress bar instead of spinner
-    with st.spinner(""):
-        progress_bar = st.progress(0, text="Initializing optimization...")
-        
-        # Simulate progress updates (you can replace with actual progress tracking)
-        for i in range(3):
-            progress_bar.progress((i + 1) * 25, text=f"Running optimization step {i + 1}/3...")
-            
-        # Run AMPL
-        subprocess.run([AMPL_EXE, RUN_FILE.name], cwd=BASE_DIR)
-        
-        progress_bar.progress(100, text="Optimization complete!")
+
+    # Show real progress bar for optimization
+progress_bar = st.progress(0, text="Initializing optimization...")
+
+# Create a temporary file to capture AMPL progress
+progress_file = BASE_DIR / "ampl_progress.txt"
+
+# Write the run file with progress tracking commands
+def write_run_file_with_progress():
+    with open(RUN_FILE, "w") as f:
+        f.write(f"""
+reset;
+option log_file "{AMPL_OUTPUT_FILE.name}";
+option log_flush 1;
+
+# Create a progress indicator
+print "Starting optimization..." > "{progress_file}";
+
+include parameters.mod;
+include user_parameters.mod;
+
+print "Loading main model..." > "{progress_file}";
+include main.mod;
+
+print "Solving..." > "{progress_file}";
+solve;
+
+print "Displaying results..." > "{progress_file}";
+display Cost_Total_Per_Ton;
+display Emissions_Total_Per_Ton;
+display Production_Route;
+display Carbon_Capture_Requirement;
+
+print "Complete!" > "{progress_file}";
+""")
+
+# Update progress based on AMPL output
+def update_progress_from_file():
+    if progress_file.exists():
+        try:
+            with open(progress_file, 'r') as f:
+                content = f.read().strip()
+                if "Starting optimization..." in content:
+                    progress_bar.progress(10, text="Initializing optimization engine...")
+                elif "Loading main model..." in content:
+                    progress_bar.progress(30, text="Loading model parameters and constraints...")
+                elif "Solving..." in content:
+                    progress_bar.progress(50, text="Solving linear programming model...")
+                elif "Displaying results..." in content:
+                    progress_bar.progress(80, text="Computing and formatting results...")
+                elif "Complete!" in content:
+                    progress_bar.progress(100, text="Optimization complete!")
+        except:
+            pass
+
+# Clean up progress file if exists
+if progress_file.exists():
+    progress_file.unlink()
+
+# Write files
+write_user_parameters(user_params)
+write_run_file_with_progress()
+
+# Start AMPL in a subprocess
+progress_bar.progress(5, text="Starting AMPL process...")
+process = subprocess.Popen(
+    [AMPL_EXE, RUN_FILE.name],
+    cwd=BASE_DIR,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True
+)
+
+# Monitor progress
+import time
+while process.poll() is None:
+    update_progress_from_file()
+    time.sleep(0.5)  # Check progress every 500ms
+
+# Final progress update
+update_progress_from_file()
+
+# Wait for process to complete
+stdout, stderr = process.communicate()
+
+# Clean up progress file
+if progress_file.exists():
+    progress_file.unlink()
+
+# Check if AMPL ran successfully
+if process.returncode != 0:
+    st.error(f"AMPL optimization failed with return code: {process.returncode}")
+    if stderr:
+        st.code(stderr, language="text")
+    st.stop()
     
     # Read and process output
     text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
