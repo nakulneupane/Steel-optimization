@@ -64,7 +64,7 @@ user_params = {
 }
 
 # ==================================================
-# Write override file (LET)
+# Write override file
 # ==================================================
 def write_user_parameters(p):
     with open(USER_PARAM_FILE, "w") as f:
@@ -73,21 +73,20 @@ def write_user_parameters(p):
             f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Write AMPL run file (CORRECT ORDER)
+# Write AMPL run file  ✅ THIS IS THE FIX
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
         f.write(
-            f"option log_file \"{AMPL_OUTPUT_FILE.name}\";\n"
-            "option log_flush 1;\n\n"
-            "# 1. Load default scalar parameters\n"
-            "include parameters.mod;\n\n"
-            "# 2. Override scalars from Streamlit\n"
-            "include user_parameters.mod;\n\n"
-            "# 3. Recompute time-dependent parameters\n"
-            "include time_parameters.mod;\n\n"
-            "# 4. Build model, solve, and print reports\n"
-            "include main.mod;\n"
+            f'reset;\n'
+            f'option log_file "{AMPL_OUTPUT_FILE.name}";\n'
+            f'option log_flush 1;\n\n'
+            f'# Load scalar defaults\n'
+            f'include parameters.mod;\n\n'
+            f'# Override scalars from Streamlit\n'
+            f'include user_parameters.mod;\n\n'
+            f'# Build model, compute time params, solve, and print reports\n'
+            f'include main.mod;\n'
         )
 
 # ==================================================
@@ -109,7 +108,7 @@ if st.button("Run Optimization", type="primary"):
     lines = text.splitlines()
 
     # ==================================================
-    # COST PER TON (UNCHANGED)
+    # COST PER TON
     # ==================================================
     cost_rows = []
     year = None
@@ -144,11 +143,13 @@ if st.button("Run Optimization", type="primary"):
 
     df_cost = pd.DataFrame(cost_rows)
     st.subheader("Cost per ton of steel (2025–2050)")
-    st.dataframe(df_cost.style.format("{:.2f}").background_gradient(cmap="Blues"),
-                 use_container_width=True)
+    st.dataframe(
+        df_cost.style.format("{:.2f}").background_gradient(cmap="Blues"),
+        use_container_width=True
+    )
 
     # ==================================================
-    # EMISSIONS PER TON (UNCHANGED)
+    # EMISSIONS PER TON
     # ==================================================
     emis_rows = []
     year = None
@@ -184,5 +185,7 @@ if st.button("Run Optimization", type="primary"):
 
     df_emis = pd.DataFrame(emis_rows)
     st.subheader("CO₂ emissions per ton of steel (2025–2050)")
-    st.dataframe(df_emis.style.format("{:.3f}").background_gradient(cmap="Reds"),
-                 use_container_width=True)
+    st.dataframe(
+        df_emis.style.format("{:.3f}").background_gradient(cmap="Reds"),
+        use_container_width=True
+    )
