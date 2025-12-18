@@ -78,7 +78,6 @@ def write_user_parameters(p):
 def write_run_file():
     with open(RUN_FILE, "w") as f:
         f.write(
-            "reset;\n"
             f"option log_file \"{AMPL_OUTPUT_FILE.name}\";\n"
             "option log_flush 1;\n\n"
             "# 1. Load default scalar parameters\n"
