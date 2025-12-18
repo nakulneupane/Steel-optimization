@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import time
 
 # ==================================================
 # Streamlit Setup - MUST BE FIRST
@@ -132,19 +133,6 @@ st.markdown("""
         border-radius: 4px !important;
         border-left: 4px solid !important;
     }
-    
-    /* Spinner */
-    .stSpinner > div {
-        border-color: #7D3C98 transparent transparent transparent !important;
-    }
-    
-    /* Metric Cards */
-    .stMetric {
-        background-color: #F8F9FA !important;
-        padding: 1rem !important;
-        border-radius: 4px !important;
-        border: 1px solid #E8E8E8 !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,7 +192,6 @@ st.sidebar.markdown("""
 # Organize parameters in a clean layout
 user_params = {}
 for k, v in sorted(params.items()):
-    # Create a clean label with tooltip-like formatting
     label = f"**{k}**"
     help_text = f"Default: {v:.6f}"
     user_params[k] = st.sidebar.number_input(
@@ -269,320 +256,252 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown("Configure parameters and initiate optimization process.")
 
-# Custom progress tracking
-progress_placeholder = st.empty()
-
 if col2.button("▶️ Run Optimization", type="primary", use_container_width=True):
+    
+    # Create a progress bar
+    progress_bar = st.progress(0)
     
     # Write parameter files
     write_user_parameters(user_params)
     write_run_file()
-
-    # Show real progress bar for optimization
-progress_bar = st.progress(0, text="Initializing optimization...")
-
-# Create a temporary file to capture AMPL progress
-progress_file = BASE_DIR / "ampl_progress.txt"
-
-# Write the run file with progress tracking commands
-def write_run_file_with_progress():
-    with open(RUN_FILE, "w") as f:
-        f.write(f"""
-reset;
-option log_file "{AMPL_OUTPUT_FILE.name}";
-option log_flush 1;
-
-# Create a progress indicator
-print "Starting optimization..." > "{progress_file}";
-
-include parameters.mod;
-include user_parameters.mod;
-
-print "Loading main model..." > "{progress_file}";
-include main.mod;
-
-print "Solving..." > "{progress_file}";
-solve;
-
-print "Displaying results..." > "{progress_file}";
-display Cost_Total_Per_Ton;
-display Emissions_Total_Per_Ton;
-display Production_Route;
-display Carbon_Capture_Requirement;
-
-print "Complete!" > "{progress_file}";
-""")
-
-# Update progress based on AMPL output
-def update_progress_from_file():
-    if progress_file.exists():
-        try:
-            with open(progress_file, 'r') as f:
-                content = f.read().strip()
-                if "Starting optimization..." in content:
-                    progress_bar.progress(10, text="Initializing optimization engine...")
-                elif "Loading main model..." in content:
-                    progress_bar.progress(30, text="Loading model parameters and constraints...")
-                elif "Solving..." in content:
-                    progress_bar.progress(50, text="Solving linear programming model...")
-                elif "Displaying results..." in content:
-                    progress_bar.progress(80, text="Computing and formatting results...")
-                elif "Complete!" in content:
-                    progress_bar.progress(100, text="Optimization complete!")
-        except:
-            pass
-
-# Clean up progress file if exists
-if progress_file.exists():
-    progress_file.unlink()
-
-# Write files
-write_user_parameters(user_params)
-write_run_file_with_progress()
-
-# Start AMPL in a subprocess
-progress_bar.progress(5, text="Starting AMPL process...")
-process = subprocess.Popen(
-    [AMPL_EXE, RUN_FILE.name],
-    cwd=BASE_DIR,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True
-)
-
-# Monitor progress
-import time
-while process.poll() is None:
-    update_progress_from_file()
-    time.sleep(0.5)  # Check progress every 500ms
-
-# Final progress update
-update_progress_from_file()
-
-# Wait for process to complete
-stdout, stderr = process.communicate()
-
-# Clean up progress file
-if progress_file.exists():
-    progress_file.unlink()
-
-# Check if AMPL ran successfully
-if process.returncode != 0:
-    st.error(f"AMPL optimization failed with return code: {process.returncode}")
-    if stderr:
-        st.code(stderr, language="text")
-    st.stop()
     
-    # Read and process output
-    text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
-    lines = text.splitlines()
+    # Start AMPL process
+    process = subprocess.Popen(
+        [AMPL_EXE, RUN_FILE.name],
+        cwd=BASE_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
     
-    # ==================================================
-    # Display Optimization Results - Clean Academic Format
-    # ==================================================
-    st.markdown("---")
-    st.markdown("## 📊 Optimization Results")
+    # Animate progress bar while AMPL runs
+    progress = 0
+    while process.poll() is None and progress < 90:
+        progress = min(90, progress + 1)
+        progress_bar.progress(progress)
+        time.sleep(0.05)  # Smooth animation
     
-    # Helper function for styled dataframes
-    def create_styled_dataframe(df, title, color_scheme):
-        st.markdown(f"### {title}")
-        
-        # Format numbers based on column type - FIXED VERSION
-        format_dict = {}
-        for col in df.columns:
-            # Check for emissions columns (look for CO₂ or emiss in column name)
-            if 'CO₂' in col or 'emiss' in col.lower() or col == 'Average (tCO₂/t)':
-                format_dict[col] = "{:.3f}"
-            # Check for fraction columns
-            elif 'frac' in col.lower():
-                format_dict[col] = "{:.3f}"
-            # Check for cost columns
-            elif '$' in col:
-                format_dict[col] = "${:.2f}"
-            # Check for tonnage columns (but not fractions)
-            elif ('(t)' in col or col == 'Total steel (t)' or col == 'Total CCS (t)') and 'frac' not in col.lower():
-                format_dict[col] = "{:,.0f}"
-            # Year column
-            elif 'Year' in col:
-                format_dict[col] = "{:.0f}"
-            # Default for other numeric columns
-            else:
-                format_dict[col] = "{:.2f}"
-        
-        # Apply styling
-        styled_df = df.style.format(format_dict)
-        
-        # Apply gradient based on color scheme
-        if color_scheme == "cost":
-            cmap = "Blues"
-        elif color_scheme == "emissions":
-            cmap = "Reds_r"
-        elif color_scheme == "production":
-            cmap = "Greens"
-        else:
-            cmap = "Purples"
-        
-        # Don't apply gradient to Year column
-        gradient_cols = [col for col in df.columns if col != "Year"]
-        if gradient_cols:
-            styled_df = styled_df.background_gradient(cmap=cmap, subset=gradient_cols)
-        
-        # Display dataframe
-        st.dataframe(styled_df, use_container_width=True, height=400)
+    # Wait for completion
+    stdout, stderr = process.communicate()
     
-    # ==================================================
-    # COST PER TON
-    # ==================================================
-    cost_rows = []
-    year = None
-    bf = coal = ng = h2 = scrap = avg = np.nan
+    # Complete the progress bar
+    progress_bar.progress(100)
+    time.sleep(0.3)  # Brief pause at 100%
     
-    for l in lines:
-        if "Year" in l and "----" in l:
-            year = int(re.findall(r"\d{4}", l)[0])
-            bf = coal = ng = h2 = scrap = avg = np.nan
+    # Clear progress bar
+    progress_bar.empty()
+    
+    # Check result
+    if process.returncode == 0:
+        st.success("✅ Optimization completed successfully!")
         
-        if "BF-BOF steel:" in l:
-            bf = float(re.findall(r"\$ *([\d.]+)", l)[0])
-        if "Coal DRI–EAF steel:" in l:
-            coal = float(re.findall(r"\$ *([\d.]+)", l)[0])
-        if "NG DRI–EAF steel:" in l:
-            ng = float(re.findall(r"\$ *([\d.]+)", l)[0])
-        if "H2 DRI–EAF steel:" in l:
-            h2 = float(re.findall(r"\$ *([\d.]+)", l)[0])
-        if "Scrap–EAF steel:" in l:
-            scrap = float(re.findall(r"\$ *([\d.]+)", l)[0])
-        if "Average Cost:" in l:
-            avg = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            cost_rows.append({
-                "Year": year,
-                "BF-BOF ($/t)": bf,
-                "Coal DRI-EAF ($/t)": coal,
-                "NG DRI-EAF ($/t)": ng,
-                "H₂ DRI-EAF ($/t)": h2,
-                "Scrap-EAF ($/t)": scrap,
-                "Average ($/t)": avg
-            })
-    
-    if cost_rows:
-        df_cost = pd.DataFrame(cost_rows)
-        create_styled_dataframe(df_cost, "Cost per Ton of Steel (2025–2050)", "cost")
-    
-    # ==================================================
-    # EMISSIONS PER TON - FIXED DISPLAY
-    # ==================================================
-    emis_rows = []
-    year = None
-    bf = coal = ng = h2 = scrap = avg = np.nan
-    
-    for l in lines:
-        if "Year" in l and "----" in l:
-            year = int(re.findall(r"\d{4}", l)[0])
-            bf = coal = ng = h2 = scrap = avg = np.nan
+        # Read and process output
+        text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
+        lines = text.splitlines()
         
-        if "BF-BOF Total per ton:" in l:
-            bf = float(re.findall(r"([\d.]+)", l)[0])
-        if "Coal DRI-EAF Total per ton:" in l:
-            coal = float(re.findall(r"([\d.]+)", l)[0])
-        if "NG DRI-EAF Total per ton:" in l:
-            ng = float(re.findall(r"([\d.]+)", l)[0])
-        if "H2 DRI-EAF Total per ton:" in l:
-            m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
-            h2 = float(m.group(1)) if (m and year >= H2_START_YEAR) else np.nan
-        if "Scrap-EAF Total per ton:" in l:
-            scrap = float(re.findall(r"([\d.]+)", l)[0])
-        if "Average System Emissions:" in l:
-            avg = float(re.findall(r"([\d.]+)", l)[0])
-            emis_rows.append({
-                "Year": year,
-                "BF-BOF (tCO₂/t)": bf,
-                "Coal DRI-EAF (tCO₂/t)": coal,
-                "NG DRI-EAF (tCO₂/t)": ng,
-                "H₂ DRI-EAF (tCO₂/t)": h2,
-                "Scrap-EAF (tCO₂/t)": scrap,
-                "Average (tCO₂/t)": avg
-            })
-    
-    if emis_rows:
-        df_emis = pd.DataFrame(emis_rows)
-        # Display emissions with debug info to verify values
-        st.markdown("### CO₂ Emissions per Ton of Steel (2025–2050)")
+        # ==================================================
+        # Display Optimization Results
+        # ==================================================
+        st.markdown("---")
+        st.markdown("## 📊 Optimization Results")
         
-        # Apply specific formatting for emissions table
-        emis_format_dict = {}
-        for col in df_emis.columns:
-            if col == "Year":
-                emis_format_dict[col] = "{:.0f}"
-            else:
-                emis_format_dict[col] = "{:.3f}"  # All emissions columns get 3 decimals
-        
-        styled_emis = df_emis.style.format(emis_format_dict)
-        
-        # Apply gradient - don't apply to Year column
-        gradient_cols = [col for col in df_emis.columns if col != "Year"]
-        if gradient_cols:
-            styled_emis = styled_emis.background_gradient(cmap="Reds_r", subset=gradient_cols)
-        
-        st.dataframe(styled_emis, use_container_width=True, height=400)
-    
-    # ==================================================
-    # PRODUCTION ROUTE
-    # ==================================================
-    prod_rows = []
-    
-    for l in lines:
-        if re.match(r"\d{4}\s", l):
-            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
-            total_match = re.search(r"\s(\d+)\s*$", l)
+        # Helper function for styled dataframes
+        def create_styled_dataframe(df, title, color_scheme):
+            st.markdown(f"### {title}")
             
-            if len(pairs) == 5 and total_match:
-                prod_rows.append({
-                    "Year": int(l[:4]),
-                    "BF-BOF (t)": float(pairs[0][0]),
-                    "BF-BOF frac": float(pairs[0][1]),
-                    "Coal DRI (t)": float(pairs[1][0]),
-                    "Coal DRI frac": float(pairs[1][1]),
-                    "NG DRI (t)": float(pairs[2][0]),
-                    "NG DRI frac": float(pairs[2][1]),
-                    "H₂ DRI (t)": float(pairs[3][0]),
-                    "H₂ DRI frac": float(pairs[3][1]),
-                    "Scrap-EAF (t)": float(pairs[4][0]),
-                    "Scrap-EAF frac": float(pairs[4][1]),
-                    "Total steel (t)": float(total_match.group(1)),
-                })
-    
-    if prod_rows:
-        df_prod = pd.DataFrame(prod_rows)
-        create_styled_dataframe(df_prod, "Production Route Distribution (Tons & Fractions)", "production")
-    
-    # ==================================================
-    # CARBON CAPTURE
-    # ==================================================
-    ccs_rows = []
-    
-    for l in lines:
-        if re.match(r"\d{4}\s", l):
-            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
-            total_match = re.search(r"\s(\d+)\s*$", l)
+            # Format numbers based on column type
+            format_dict = {}
+            for col in df.columns:
+                if 'CO₂' in col or 'emiss' in col.lower() or col == 'Average (tCO₂/t)':
+                    format_dict[col] = "{:.3f}"
+                elif 'frac' in col.lower():
+                    format_dict[col] = "{:.3f}"
+                elif '$' in col:
+                    format_dict[col] = "${:.2f}"
+                elif ('(t)' in col or col == 'Total steel (t)' or col == 'Total CCS (t)') and 'frac' not in col.lower():
+                    format_dict[col] = "{:,.0f}"
+                elif 'Year' in col:
+                    format_dict[col] = "{:.0f}"
+                else:
+                    format_dict[col] = "{:.2f}"
             
-            if len(pairs) == 3 and total_match:
-                ccs_rows.append({
-                    "Year": int(l[:4]),
-                    "BF-BOF CCS (t)": float(pairs[0][0]),
-                    "BF-BOF CCS frac": float(pairs[0][1]),
-                    "Coal DRI CCS (t)": float(pairs[1][0]),
-                    "Coal DRI CCS frac": float(pairs[1][1]),
-                    "NG DRI CCS (t)": float(pairs[2][0]),
-                    "NG DRI CCS frac": float(pairs[2][1]),
-                    "Total CCS (t)": float(total_match.group(1)),
+            # Apply styling
+            styled_df = df.style.format(format_dict)
+            
+            # Apply gradient
+            if color_scheme == "cost":
+                cmap = "Blues"
+            elif color_scheme == "emissions":
+                cmap = "Reds_r"
+            elif color_scheme == "production":
+                cmap = "Greens"
+            else:
+                cmap = "Purples"
+            
+            # Don't apply gradient to Year column
+            gradient_cols = [col for col in df.columns if col != "Year"]
+            if gradient_cols:
+                styled_df = styled_df.background_gradient(cmap=cmap, subset=gradient_cols)
+            
+            # Display dataframe
+            st.dataframe(styled_df, use_container_width=True, height=400)
+        
+        # ==================================================
+        # COST PER TON
+        # ==================================================
+        cost_rows = []
+        year = None
+        bf = coal = ng = h2 = scrap = avg = np.nan
+        
+        for l in lines:
+            if "Year" in l and "----" in l:
+                year = int(re.findall(r"\d{4}", l)[0])
+                bf = coal = ng = h2 = scrap = avg = np.nan
+            
+            if "BF-BOF steel:" in l:
+                bf = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            if "Coal DRI–EAF steel:" in l:
+                coal = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            if "NG DRI–EAF steel:" in l:
+                ng = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            if "H2 DRI–EAF steel:" in l:
+                h2 = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            if "Scrap–EAF steel:" in l:
+                scrap = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            if "Average Cost:" in l:
+                avg = float(re.findall(r"\$ *([\d.]+)", l)[0])
+                cost_rows.append({
+                    "Year": year,
+                    "BF-BOF ($/t)": bf,
+                    "Coal DRI-EAF ($/t)": coal,
+                    "NG DRI-EAF ($/t)": ng,
+                    "H₂ DRI-EAF ($/t)": h2,
+                    "Scrap-EAF ($/t)": scrap,
+                    "Average ($/t)": avg
                 })
-    
-    if ccs_rows:
-        df_ccs = pd.DataFrame(ccs_rows)
-        create_styled_dataframe(df_ccs, "Carbon Capture Requirements (Tons & Fractions)", "ccs")
-    
-    # Show completion message
-    st.success("✅ Optimization completed successfully. Results displayed above.")
-    
+        
+        if cost_rows:
+            df_cost = pd.DataFrame(cost_rows)
+            create_styled_dataframe(df_cost, "Cost per Ton of Steel (2025–2050)", "cost")
+        
+        # ==================================================
+        # EMISSIONS PER TON
+        # ==================================================
+        emis_rows = []
+        year = None
+        bf = coal = ng = h2 = scrap = avg = np.nan
+        
+        for l in lines:
+            if "Year" in l and "----" in l:
+                year = int(re.findall(r"\d{4}", l)[0])
+                bf = coal = ng = h2 = scrap = avg = np.nan
+            
+            if "BF-BOF Total per ton:" in l:
+                bf = float(re.findall(r"([\d.]+)", l)[0])
+            if "Coal DRI-EAF Total per ton:" in l:
+                coal = float(re.findall(r"([\d.]+)", l)[0])
+            if "NG DRI-EAF Total per ton:" in l:
+                ng = float(re.findall(r"([\d.]+)", l)[0])
+            if "H2 DRI-EAF Total per ton:" in l:
+                m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
+                h2 = float(m.group(1)) if (m and year >= H2_START_YEAR) else np.nan
+            if "Scrap-EAF Total per ton:" in l:
+                scrap = float(re.findall(r"([\d.]+)", l)[0])
+            if "Average System Emissions:" in l:
+                avg = float(re.findall(r"([\d.]+)", l)[0])
+                emis_rows.append({
+                    "Year": year,
+                    "BF-BOF (tCO₂/t)": bf,
+                    "Coal DRI-EAF (tCO₂/t)": coal,
+                    "NG DRI-EAF (tCO₂/t)": ng,
+                    "H₂ DRI-EAF (tCO₂/t)": h2,
+                    "Scrap-EAF (tCO₂/t)": scrap,
+                    "Average (tCO₂/t)": avg
+                })
+        
+        if emis_rows:
+            df_emis = pd.DataFrame(emis_rows)
+            st.markdown("### CO₂ Emissions per Ton of Steel (2025–2050)")
+            
+            # Apply specific formatting for emissions table
+            emis_format_dict = {}
+            for col in df_emis.columns:
+                if col == "Year":
+                    emis_format_dict[col] = "{:.0f}"
+                else:
+                    emis_format_dict[col] = "{:.3f}"
+            
+            styled_emis = df_emis.style.format(emis_format_dict)
+            
+            # Apply gradient
+            gradient_cols = [col for col in df_emis.columns if col != "Year"]
+            if gradient_cols:
+                styled_emis = styled_emis.background_gradient(cmap="Reds_r", subset=gradient_cols)
+            
+            st.dataframe(styled_emis, use_container_width=True, height=400)
+        
+        # ==================================================
+        # PRODUCTION ROUTE
+        # ==================================================
+        prod_rows = []
+        
+        for l in lines:
+            if re.match(r"\d{4}\s", l):
+                pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+                total_match = re.search(r"\s(\d+)\s*$", l)
+                
+                if len(pairs) == 5 and total_match:
+                    prod_rows.append({
+                        "Year": int(l[:4]),
+                        "BF-BOF (t)": float(pairs[0][0]),
+                        "BF-BOF frac": float(pairs[0][1]),
+                        "Coal DRI (t)": float(pairs[1][0]),
+                        "Coal DRI frac": float(pairs[1][1]),
+                        "NG DRI (t)": float(pairs[2][0]),
+                        "NG DRI frac": float(pairs[2][1]),
+                        "H₂ DRI (t)": float(pairs[3][0]),
+                        "H₂ DRI frac": float(pairs[3][1]),
+                        "Scrap-EAF (t)": float(pairs[4][0]),
+                        "Scrap-EAF frac": float(pairs[4][1]),
+                        "Total steel (t)": float(total_match.group(1)),
+                    })
+        
+        if prod_rows:
+            df_prod = pd.DataFrame(prod_rows)
+            create_styled_dataframe(df_prod, "Production Route Distribution (Tons & Fractions)", "production")
+        
+        # ==================================================
+        # CARBON CAPTURE
+        # ==================================================
+        ccs_rows = []
+        
+        for l in lines:
+            if re.match(r"\d{4}\s", l):
+                pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+                total_match = re.search(r"\s(\d+)\s*$", l)
+                
+                if len(pairs) == 3 and total_match:
+                    ccs_rows.append({
+                        "Year": int(l[:4]),
+                        "BF-BOF CCS (t)": float(pairs[0][0]),
+                        "BF-BOF CCS frac": float(pairs[0][1]),
+                        "Coal DRI CCS (t)": float(pairs[1][0]),
+                        "Coal DRI CCS frac": float(pairs[1][1]),
+                        "NG DRI CCS (t)": float(pairs[2][0]),
+                        "NG DRI CCS frac": float(pairs[2][1]),
+                        "Total CCS (t)": float(total_match.group(1)),
+                    })
+        
+        if ccs_rows:
+            df_ccs = pd.DataFrame(ccs_rows)
+            create_styled_dataframe(df_ccs, "Carbon Capture Requirements (Tons & Fractions)", "ccs")
+        
+    else:
+        st.error("❌ Optimization failed!")
+        if stderr:
+            with st.expander("Show error details"):
+                st.code(stderr, language="text")
+        st.stop()
+        
 else:
     st.info("👆 Click 'Run Optimization' to execute the model with current parameters.")
