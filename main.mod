@@ -1,4 +1,4 @@
-reset;
+#reset;
 set T ordered := 2025..2050;
 
 include parameters.mod;
@@ -92,6 +92,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
