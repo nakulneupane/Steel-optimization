@@ -1,0 +1,7 @@
+
+reset;
+option log_file "ampl_output.txt";
+option log_flush 1;
+
+include default_params.mod;
+include main.mod;
