@@ -10,27 +10,23 @@ import numpy as np
 # Streamlit setup
 # ==================================================
 st.set_page_config(layout="wide")
-st.title("Steel Sector Optimization")
+st.title("Steel System Optimization (AMPL)")
+st.caption("Optimization + fully tabularized results")
 
 # ==================================================
 # Paths
 # ==================================================
 BASE_DIR = Path(__file__).parent
-MAIN_MOD_FILE = BASE_DIR / "main.mod"
 PARAM_FILE = BASE_DIR / "parameters.mod"
 USER_PARAM_FILE = BASE_DIR / "user_parameters.mod"
 RUN_FILE = BASE_DIR / "run_ampl.run"
 AMPL_OUTPUT_FILE = BASE_DIR / "ampl_output.txt"
 
 # ==================================================
-# Check required files
+# Sanity checks
 # ==================================================
 if not PARAM_FILE.exists():
-    st.error(f"Missing parameters.mod at {PARAM_FILE}")
-    st.stop()
-    
-if not MAIN_MOD_FILE.exists():
-    st.error(f"Missing main.mod at {MAIN_MOD_FILE}")
+    st.error("Missing parameters.mod")
     st.stop()
 
 AMPL_EXE = shutil.which("ampl")
@@ -39,277 +35,208 @@ if not AMPL_EXE:
     st.stop()
 
 # ==================================================
-# Load parameters from parameters.mod
+# Load DEFAULT parameters
 # ==================================================
-def load_params():
-    """Extract parameter names and default values from parameters.mod"""
+param_pattern = re.compile(
+    r"^\s*param\s+(\w+)\s+default\s+([0-9.eE+-]+)\s*;",
+    re.IGNORECASE
+)
+
+def load_defaults():
     params = {}
-    
-    # Pattern to match: param param_name default value;
-    pattern = re.compile(r'^\s*param\s+(\w+)\s+default\s+([0-9.eE+-]+)\s*;', re.IGNORECASE)
-    
-    try:
-        with open(PARAM_FILE) as f:
-            for line in f:
-                match = pattern.match(line.strip())
-                if match:
-                    param_name = match.group(1)
-                    param_value = float(match.group(2))
-                    params[param_name] = param_value
-    except Exception as e:
-        st.error(f"Error reading parameters.mod: {e}")
-        return {}
-    
+    with open(PARAM_FILE) as f:
+        for line in f:
+            m = param_pattern.match(line)
+            if m:
+                params[m.group(1)] = float(m.group(2))
     return params
 
-params = load_params()
-
-if not params:
-    st.error("No parameters found in parameters.mod. Check the file format.")
-    st.stop()
+params = load_defaults()
+H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
-# Sidebar for parameter inputs
+# Sidebar parameters
 # ==================================================
 st.sidebar.header("Model Parameters")
-user_params = {}
-
-for param_name in sorted(params.keys()):
-    default_value = params[param_name]
-    user_params[param_name] = st.sidebar.number_input(
-        param_name,
-        value=float(default_value),
-        format="%.6f"
-    )
+user_params = {
+    k: st.sidebar.number_input(k, value=v, format="%.6f")
+    for k, v in sorted(params.items())
+}
 
 # ==================================================
-# Create a custom main.mod that doesn't include parameters.mod
+# Write override file
 # ==================================================
-def create_custom_main():
-    """Create a main.mod file that doesn't include parameters.mod
-    since we'll include it separately with overrides"""
-    
-    try:
-        with open(MAIN_MOD_FILE, 'r') as f:
-            content = f.read()
-        
-        # Remove the include parameters.mod line
-        lines = content.split('\n')
-        new_lines = []
-        
-        for line in lines:
-            # Skip the include parameters.mod line
-            if 'include parameters.mod;' in line:
-                continue
-            new_lines.append(line)
-        
-        # Write to a temporary file
-        temp_main = BASE_DIR / "temp_main.mod"
-        with open(temp_main, 'w') as f:
-            f.write('\n'.join(new_lines))
-        
-        return temp_main
-    
-    except Exception as e:
-        st.error(f"Error creating custom main.mod: {e}")
-        return MAIN_MOD_FILE
-
-# ==================================================
-# Write user parameters file
-# ==================================================
-def write_user_params():
-    """Write user parameters as let statements to override defaults"""
+def write_user_parameters(p):
     with open(USER_PARAM_FILE, "w") as f:
-        f.write("# User parameter overrides\n\n")
-        for param_name, value in user_params.items():
-            f.write(f"let {param_name} := {value};\n")
+        for k, v in p.items():
+            f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Create AMPL run file
+# Write AMPL run file
 # ==================================================
 def write_run_file():
-    """Create AMPL run script"""
-    
-    # Create custom main.mod without parameters.mod include
-    custom_main = create_custom_main()
-    
     with open(RUN_FILE, "w") as f:
-        f.write(f"""# AMPL run script
+        f.write(f"""
 reset;
+option log_file "{AMPL_OUTPUT_FILE.name}";
+option log_flush 1;
 
-# First include the parameters
-include "{PARAM_FILE.name}";
-
-# Then override with user parameters
-include "{USER_PARAM_FILE.name}";
-
-# Now include the custom main.mod (without parameters.mod include)
-include "{custom_main.name}";
-
-# Solve
-solve;
-
-# Display results
-display total_cost;
-display total_steel;
-display total_emissions;
+include parameters.mod;
+include user_parameters.mod;
+include main.mod;
 """)
-
-# ==================================================
-# Parse AMPL output
-# ==================================================
-def parse_results():
-    """Parse AMPL output file for results"""
-    if not AMPL_OUTPUT_FILE.exists():
-        return None, None
-    
-    try:
-        text = AMPL_OUTPUT_FILE.read_text(encoding='utf-8', errors='ignore')
-        
-        # Debug: Show raw output
-        with st.expander("View AMPL Output"):
-            st.code(text)
-        
-        # Try to find cost and emissions data
-        cost_rows = []
-        emis_rows = []
-        
-        lines = text.split('\n')
-        
-        # Simple parsing for cost
-        for line in lines:
-            if 'total_cost[' in line and ':=' in line:
-                # Example: total_cost[2025] := 123.456
-                match = re.search(r'total_cost\[(\d+)\]\s*:=\s*([\d.]+)', line)
-                if match:
-                    year = int(match.group(1))
-                    cost = float(match.group(2))
-                    cost_rows.append({
-                        'Year': year,
-                        'Total Cost': cost
-                    })
-        
-        # Simple parsing for steel production
-        steel_data = {}
-        for line in lines:
-            if 'total_steel[' in line and ':=' in line:
-                match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', line)
-                if match:
-                    year = int(match.group(1))
-                    steel = float(match.group(2))
-                    steel_data[year] = steel
-        
-        # Simple parsing for emissions
-        for line in lines:
-            if 'total_emissions[' in line and ':=' in line:
-                match = re.search(r'total_emissions\[(\d+)\]\s*:=\s*([\d.]+)', line)
-                if match:
-                    year = int(match.group(1))
-                    emissions = float(match.group(2))
-                    emis_rows.append({
-                        'Year': year,
-                        'Total Emissions': emissions
-                    })
-        
-        # Create dataframes with per-ton calculations
-        cost_df = pd.DataFrame(cost_rows) if cost_rows else pd.DataFrame()
-        emis_df = pd.DataFrame(emis_rows) if emis_rows else pd.DataFrame()
-        
-        # Calculate per-ton values
-        if not cost_df.empty and steel_data:
-            cost_df['Steel Production'] = cost_df['Year'].map(steel_data)
-            cost_df['Cost per ton ($/t)'] = cost_df.apply(
-                lambda row: row['Total Cost'] / row['Steel Production'] if row['Steel Production'] > 0 else 0,
-                axis=1
-            )
-        
-        if not emis_df.empty and steel_data:
-            emis_df['Steel Production'] = emis_df['Year'].map(steel_data)
-            emis_df['Emissions per ton (tCO₂/t)'] = emis_df.apply(
-                lambda row: row['Total Emissions'] / row['Steel Production'] if row['Steel Production'] > 0 else 0,
-                axis=1
-            )
-        
-        return cost_df, emis_df
-        
-    except Exception as e:
-        st.error(f"Error parsing results: {e}")
-        return None, None
-
-# ==================================================
-# Clean up temporary files
-# ==================================================
-def cleanup():
-    """Clean up temporary files"""
-    temp_files = [
-        USER_PARAM_FILE,
-        RUN_FILE,
-        AMPL_OUTPUT_FILE,
-        BASE_DIR / "temp_main.mod"
-    ]
-    
-    for file in temp_files:
-        if file.exists():
-            try:
-                file.unlink()
-            except:
-                pass
-
-# Clean up on start
-cleanup()
 
 # ==================================================
 # Run optimization
 # ==================================================
-if st.button("Run Optimization"):
-    if not user_params:
-        st.error("No parameters to optimize")
-        st.stop()
-    
-    # Clean up first
-    cleanup()
-    
-    # Write parameter files
-    write_user_params()
+if st.button("Run Optimization", type="primary"):
+
+    write_user_parameters(user_params)
     write_run_file()
-    
-    # Run AMPL
-    with st.spinner("Running AMPL..."):
-        try:
-            # Run AMPL
-            result = subprocess.run(
-                [AMPL_EXE, RUN_FILE.name],
-                cwd=BASE_DIR,
-                capture_output=True,
-                text=True
-            )
-            
-            # Check if AMPL ran successfully
-            if result.returncode != 0:
-                st.error("AMPL failed to run")
-                st.code(f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}")
-                st.stop()
-            
-            # Parse and display results
-            df_cost, df_emis = parse_results()
-            
-            if df_cost is not None and not df_cost.empty:
-                st.subheader("Cost Results")
-                st.dataframe(df_cost)
-            else:
-                st.warning("No cost results found in output")
-            
-            if df_emis is not None and not df_emis.empty:
-                st.subheader("Emissions Results")
-                st.dataframe(df_emis)
-            else:
-                st.warning("No emissions results found in output")
-            
-            # Show success message
-            st.success("Optimization completed!")
-            
-        except Exception as e:
-            st.error(f"Error running optimization: {e}")
-        finally:
-            # Clean up temporary files
-            cleanup()
+
+    with st.spinner("Running AMPL optimization..."):
+        subprocess.run([AMPL_EXE, RUN_FILE.name], cwd=BASE_DIR)
+
+    text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
+    lines = text.splitlines()
+
+    # ==================================================
+    # COST PER TON (UNCHANGED)
+    # ==================================================
+    cost_rows = []
+    year = None
+    bf = coal = ng = h2 = scrap = avg = np.nan
+
+    for l in lines:
+        if "Year" in l and "----" in l:
+            year = int(re.findall(r"\d{4}", l)[0])
+            bf = coal = ng = h2 = scrap = avg = np.nan
+
+        if "BF-BOF steel:" in l:
+            bf = float(re.findall(r"\$ *([\d.]+)", l)[0])
+        if "Coal DRI–EAF steel:" in l:
+            coal = float(re.findall(r"\$ *([\d.]+)", l)[0])
+        if "NG DRI–EAF steel:" in l:
+            ng = float(re.findall(r"\$ *([\d.]+)", l)[0])
+        if "H2 DRI–EAF steel:" in l:
+            h2 = float(re.findall(r"\$ *([\d.]+)", l)[0])
+        if "Scrap–EAF steel:" in l:
+            scrap = float(re.findall(r"\$ *([\d.]+)", l)[0])
+        if "Average Cost:" in l:
+            avg = float(re.findall(r"\$ *([\d.]+)", l)[0])
+            cost_rows.append({
+                "Year": year,
+                "BF-BOF ($/t)": bf,
+                "Coal DRI-EAF ($/t)": coal,
+                "NG DRI-EAF ($/t)": ng,
+                "H₂ DRI-EAF ($/t)": h2,
+                "Scrap-EAF ($/t)": scrap,
+                "Average ($/t)": avg
+            })
+
+    df_cost = pd.DataFrame(cost_rows)
+    st.subheader("Cost per ton of steel (2025–2050)")
+    st.dataframe(df_cost.style.format("{:.2f}").background_gradient(cmap="Blues"),
+                 use_container_width=True)
+
+    # ==================================================
+    # EMISSIONS PER TON (UNCHANGED)
+    # ==================================================
+    emis_rows = []
+    year = None
+    bf = coal = ng = h2 = scrap = avg = np.nan
+
+    for l in lines:
+        if "Year" in l and "----" in l:
+            year = int(re.findall(r"\d{4}", l)[0])
+            bf = coal = ng = h2 = scrap = avg = np.nan
+
+        if "BF-BOF Total per ton:" in l:
+            bf = float(re.findall(r"([\d.]+)", l)[0])
+        if "Coal DRI-EAF Total per ton:" in l:
+            coal = float(re.findall(r"([\d.]+)", l)[0])
+        if "NG DRI-EAF Total per ton:" in l:
+            ng = float(re.findall(r"([\d.]+)", l)[0])
+        if "H2 DRI-EAF Total per ton:" in l:
+            m = re.search(r"H2 DRI-EAF Total per ton:\s*([\d.]+)", l)
+            h2 = float(m.group(1)) if (m and year >= H2_START_YEAR) else np.nan
+        if "Scrap-EAF Total per ton:" in l:
+            scrap = float(re.findall(r"([\d.]+)", l)[0])
+        if "Average System Emissions:" in l:
+            avg = float(re.findall(r"([\d.]+)", l)[0])
+            emis_rows.append({
+                "Year": year,
+                "BF-BOF (tCO₂/t)": bf,
+                "Coal DRI-EAF (tCO₂/t)": coal,
+                "NG DRI-EAF (tCO₂/t)": ng,
+                "H₂ DRI-EAF (tCO₂/t)": h2,
+                "Scrap-EAF (tCO₂/t)": scrap,
+                "Average (tCO₂/t)": avg
+            })
+
+    df_emis = pd.DataFrame(emis_rows)
+    st.subheader("CO₂ emissions per ton of steel (2025–2050)")
+    st.dataframe(df_emis.style.format("{:.3f}").background_gradient(cmap="Reds"),
+                 use_container_width=True)
+
+    # ==================================================
+    # PRODUCTION ROUTE (TOTAL FIXED)
+    # ==================================================
+    prod_rows = []
+
+    for l in lines:
+        if re.match(r"\d{4}\s", l):
+            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+            total_match = re.search(r"\s(\d+)\s*$", l)
+
+            if len(pairs) == 5 and total_match:
+                prod_rows.append({
+                    "Year": int(l[:4]),
+                    "BF-BOF (t)": float(pairs[0][0]),
+                    "BF-BOF frac": float(pairs[0][1]),
+                    "Coal DRI (t)": float(pairs[1][0]),
+                    "Coal DRI frac": float(pairs[1][1]),
+                    "NG DRI (t)": float(pairs[2][0]),
+                    "NG DRI frac": float(pairs[2][1]),
+                    "H₂ DRI (t)": float(pairs[3][0]),
+                    "H₂ DRI frac": float(pairs[3][1]),
+                    "Scrap-EAF (t)": float(pairs[4][0]),
+                    "Scrap-EAF frac": float(pairs[4][1]),
+                    "Total steel (t)": float(total_match.group(1)),
+                })
+
+    df_prod = pd.DataFrame(prod_rows)
+    st.subheader("Production route (tons & fractions)")
+    st.dataframe(df_prod.style
+                 .format("{:.2f}", subset=[c for c in df_prod.columns if "frac" in c])
+                 .background_gradient(cmap="Greens"),
+                 use_container_width=True)
+
+    # ==================================================
+    # CARBON CAPTURE (TOTAL FIXED)
+    # ==================================================
+    ccs_rows = []
+
+    for l in lines:
+        if re.match(r"\d{4}\s", l):
+            pairs = re.findall(r"(\d+(?:\.\d+)?)/\s*(-?\d+\.\d+)", l)
+            total_match = re.search(r"\s(\d+)\s*$", l)
+
+            if len(pairs) == 3 and total_match:
+                ccs_rows.append({
+                    "Year": int(l[:4]),
+                    "BF-BOF CCS (t)": float(pairs[0][0]),
+                    "BF-BOF CCS frac": float(pairs[0][1]),
+                    "Coal DRI CCS (t)": float(pairs[1][0]),
+                    "Coal DRI CCS frac": float(pairs[1][1]),
+                    "NG DRI CCS (t)": float(pairs[2][0]),
+                    "NG DRI CCS frac": float(pairs[2][1]),
+                    "Total CCS (t)": float(total_match.group(1)),
+                })
+
+    df_ccs = pd.DataFrame(ccs_rows)
+    st.subheader("Carbon capture requirement (tons & fractions)")
+    st.dataframe(df_ccs.style
+                 .format("{:.2f}", subset=[c for c in df_ccs.columns if "frac" in c])
+                 .background_gradient(cmap="Purples"),
+                 use_container_width=True)
