@@ -140,8 +140,8 @@ st.markdown("""
 # Paths
 # ==================================================
 BASE_DIR = Path(__file__).parent
-PARAM_FILE = BASE_DIR / "parameters.mod"
-USER_PARAM_FILE = BASE_DIR / "user_parameters.mod"
+PARAM_FILE = BASE_DIR / "default_params.mod"
+USER_PARAM_FILE = BASE_DIR / "parameters.mod"
 RUN_FILE = BASE_DIR / "run_ampl.run"
 AMPL_OUTPUT_FILE = BASE_DIR / "ampl_output.txt"
 
