@@ -76,23 +76,19 @@ def write_user_parameters(p):
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
-        f.write(f"""
-reset;
-option log_file "{AMPL_OUTPUT_FILE.name}";
-option log_flush 1;
-
-# 1. Load scalar defaults
-include parameters.mod;
-
-# 2. Override scalars from Streamlit
-include user_parameters.mod;
-
-# 3. Recompute all time-dependent parameters
-include time_parameters.mod;
-
-# 4. Build model, solve, and print reports
-include main.mod;
-""")
+        f.write(
+            f"reset;\n"
+            f"option log_file \"{AMPL_OUTPUT_FILE.name}\";\n"
+            f"option log_flush 1;\n\n"
+            f"# 1. Load scalar defaults\n"
+            f"include parameters.mod;\n\n"
+            f"# 2. Override scalars from Streamlit\n"
+            f"include user_parameters.mod;\n\n"
+            f"# 3. Recompute time-dependent parameters\n"
+            f"include time_parameters.mod;\n\n"
+            f"# 4. Build model, solve, and print reports\n"
+            f"include main.mod;\n"
+        )
 
 # OVERRIDE PARAMETERS AFTER MODEL IS BUILT
 include user_parameters.mod;
