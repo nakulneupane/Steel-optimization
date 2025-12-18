@@ -81,8 +81,18 @@ reset;
 option log_file "{AMPL_OUTPUT_FILE.name}";
 option log_flush 1;
 
+# 1. Load scalar defaults
 include parameters.mod;
+
+# 2. Override scalars from Streamlit
+include user_parameters.mod;
+
+# 3. Recompute all time-dependent parameters
+include time_parameters.mod;
+
+# 4. Build model, solve, and print reports
 include main.mod;
+""")
 
 # OVERRIDE PARAMETERS AFTER MODEL IS BUILT
 include user_parameters.mod;
