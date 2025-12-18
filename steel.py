@@ -227,8 +227,6 @@ reset;
 option log_file "{AMPL_OUTPUT_FILE.name}";
 option log_flush 1;
 
-include parameters.mod;
-include user_parameters.mod;
 include main.mod;
 """)
 
