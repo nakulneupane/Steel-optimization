@@ -149,7 +149,7 @@ AMPL_OUTPUT_FILE = BASE_DIR / "ampl_output.txt"
 # Checks
 # ==================================================
 if not PARAM_FILE.exists():
-    st.error("❌ **Critical Error**: `parameters.mod` file not found.")
+    st.error("❌ **Critical Error**: `definitions.mod` file not found.")
     st.stop()
 
 AMPL_EXE = shutil.which("ampl")
