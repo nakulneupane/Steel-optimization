@@ -1,7 +1,7 @@
 #reset;
 set T ordered := 2025..2050;
-#include parameters.mod;
-#include time_parameters.mod;
+include parameters.mod;
+include time_parameters.mod;
 include variables.mod;
 
 # Process modules
@@ -61,6 +61,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
