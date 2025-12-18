@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 # ==================================================
-# Streamlit Setup - MUST BE FIRST
+# Streamlit Setup 
 # ==================================================
 st.set_page_config(
     layout="wide",
@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ==================================================
-# Custom CSS for Academic/Classical Styling
+# Styling
 # ==================================================
 st.markdown("""
 <style>
@@ -146,7 +146,7 @@ RUN_FILE = BASE_DIR / "run_ampl.run"
 AMPL_OUTPUT_FILE = BASE_DIR / "ampl_output.txt"
 
 # ==================================================
-# Sanity checks
+# Checks
 # ==================================================
 if not PARAM_FILE.exists():
     st.error("❌ **Critical Error**: `parameters.mod` file not found.")
@@ -178,7 +178,7 @@ params = load_defaults()
 H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
-# Sidebar Parameters - Academic Layout
+# Sidebar Parameters 
 # ==================================================
 st.sidebar.markdown("""
 <div style="padding: 1rem 0; border-bottom: 2px solid #D5D8DC;">
@@ -189,7 +189,7 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Organize parameters in a clean layout
+# Organizing parameters 
 user_params = {}
 for k, v in sorted(params.items()):
     label = f"**{k}**"
@@ -210,7 +210,7 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================================================
-# Write override file
+# Override file
 # ==================================================
 def write_user_parameters(p):
     with open(USER_PARAM_FILE, "w") as f:
@@ -218,7 +218,7 @@ def write_user_parameters(p):
             f.write(f"let {k} := {v};\n")
 
 # ==================================================
-# Write AMPL run file
+# AMPL run file
 # ==================================================
 def write_run_file():
     with open(RUN_FILE, "w") as f:
