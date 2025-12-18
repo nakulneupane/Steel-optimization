@@ -5,14 +5,12 @@ import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import sys
 
 # ==================================================
 # Streamlit setup
 # ==================================================
 st.set_page_config(layout="wide")
 st.title("Steel Sector Optimization")
-st.caption("AMPL Optimization")
 
 # ==================================================
 # Paths
@@ -23,10 +21,9 @@ PARAM_FILE = BASE_DIR / "parameters.mod"
 USER_PARAM_FILE = BASE_DIR / "user_parameters.mod"
 RUN_FILE = BASE_DIR / "run_ampl.run"
 AMPL_OUTPUT_FILE = BASE_DIR / "ampl_output.txt"
-CUSTOM_MAIN_FILE = BASE_DIR / "custom_main.mod"
 
 # ==================================================
-# Sanity checks
+# Check required files
 # ==================================================
 if not PARAM_FILE.exists():
     st.error(f"Missing parameters.mod at {PARAM_FILE}")
@@ -42,386 +39,219 @@ if not AMPL_EXE:
     st.stop()
 
 # ==================================================
-# Load DEFAULT scalar parameters
+# Load parameters from parameters.mod
 # ==================================================
-param_pattern = re.compile(
-    r"^\s*param\s+(\w+)\s+default\s+([0-9.eE+-]+)\s*;",
-    re.IGNORECASE
-)
-
-# Also capture param declarations without default values
-param_simple_pattern = re.compile(
-    r"^\s*param\s+(\w+)\s*;",
-    re.IGNORECASE
-)
-
-def load_params_from_mod():
-    """Extract all parameter names from parameters.mod"""
+def load_params():
+    """Extract parameter names and default values from parameters.mod"""
     params = {}
-    with open(PARAM_FILE) as f:
-        content = f.read()
-        
-        # Find all param declarations with default values
-        for m in param_pattern.finditer(content):
-            params[m.group(1)] = float(m.group(2))
-            
-        # Also find param declarations without defaults
-        for m in param_simple_pattern.finditer(content):
-            param_name = m.group(1)
-            if param_name not in params:
-                # Mark as needing user input but no default
-                params[param_name] = 0.0
-                
+    
+    # Pattern to match: param param_name default value;
+    pattern = re.compile(r'^\s*param\s+(\w+)\s+default\s+([0-9.eE+-]+)\s*;', re.IGNORECASE)
+    
+    try:
+        with open(PARAM_FILE) as f:
+            for line in f:
+                match = pattern.match(line.strip())
+                if match:
+                    param_name = match.group(1)
+                    param_value = float(match.group(2))
+                    params[param_name] = param_value
+    except Exception as e:
+        st.error(f"Error reading parameters.mod: {e}")
+        return {}
+    
     return params
 
-params = load_params_from_mod()
+params = load_params()
 
-# Display number of parameters found
-st.sidebar.metric("Parameters found", len(params))
+if not params:
+    st.error("No parameters found in parameters.mod. Check the file format.")
+    st.stop()
 
 # ==================================================
-# Sidebar parameters
+# Sidebar for parameter inputs
 # ==================================================
 st.sidebar.header("Model Parameters")
-st.sidebar.info("Adjust parameters and click 'Run Optimization'")
-
 user_params = {}
-with st.sidebar.expander("Parameters", expanded=True):
-    for k in sorted(params.keys()):
-        # Create a unique key for each widget
-        widget_key = f"param_{k}"
-        user_params[k] = st.number_input(
-            f"{k}",
-            value=float(params[k]),
-            format="%.6f",
-            key=widget_key
-        )
+
+for param_name in sorted(params.keys()):
+    default_value = params[param_name]
+    user_params[param_name] = st.sidebar.number_input(
+        param_name,
+        value=float(default_value),
+        format="%.6f"
+    )
 
 # ==================================================
-# Create a custom main.mod that includes user parameters
-# BEFORE including other modules
+# Write user parameters file
 # ==================================================
-def create_custom_main():
-    """Create a modified main.mod that includes user_parameters.mod 
-    right after parameters.mod"""
-    
-    with open(MAIN_MOD_FILE, 'r') as f:
-        main_content = f.read()
-    
-    # Read the original main.mod content
-    with open(MAIN_MOD_FILE, 'r') as f:
-        lines = f.readlines()
-    
-    # Find where to insert user_parameters.mod
-    # We want it right after parameters.mod include
-    new_lines = []
-    for line in lines:
-        new_lines.append(line)
-        # If this line includes parameters.mod, add user_parameters.mod next
-        if 'include parameters.mod;' in line:
-            new_lines.append('include user_parameters.mod;\n')
-    
-    # Write the modified content
-    with open(CUSTOM_MAIN_FILE, 'w') as f:
-        f.writelines(new_lines)
-    
-    return CUSTOM_MAIN_FILE
-
-# ==================================================
-# Write override file with let statements
-# ==================================================
-def write_user_parameters(p):
-    """Write user parameters as let statements"""
+def write_user_params():
+    """Write user parameters as let statements to override defaults"""
     with open(USER_PARAM_FILE, "w") as f:
-        f.write("# User parameter overrides (generated by Streamlit)\n")
-        f.write("# These override the defaults in parameters.mod\n\n")
-        for k, v in p.items():
-            f.write(f"let {k} := {v};\n")
-        f.write("\n# End of user parameters\n")
+        f.write("# User parameter overrides\n")
+        f.write("# This file is included after parameters.mod\n\n")
+        for param_name, value in user_params.items():
+            f.write(f"let {param_name} := {value};\n")
 
 # ==================================================
-# Write AMPL run file
+# Create AMPL run file
 # ==================================================
-def write_run_file(use_custom_main=True):
-    """Create AMPL run script"""
-    main_file_to_use = CUSTOM_MAIN_FILE if use_custom_main else MAIN_MOD_FILE
-    
+def write_run_file():
+    """Create AMPL run script that properly includes user parameters"""
     with open(RUN_FILE, "w") as f:
-        f.write(f"""# AMPL run script generated by Streamlit
+        f.write(f"""# AMPL run script
 reset;
+
+# First include the default parameters
+include "{PARAM_FILE.name}";
+
+# Then override with user parameters
+include "{USER_PARAM_FILE.name}";
+
+# Now run the main model
+include "{MAIN_MOD_FILE.name}";
+
+# Save output
 option log_file "{AMPL_OUTPUT_FILE.name}";
-option log_flush 1;
-option show_stats 1;
+solve;
 
-# Display a message
-print "Starting optimization with user parameters...";
-
-# Include the main model file (which includes user_parameters.mod)
-include "{main_file_to_use.name}";
-
-# Display final status
-print "Optimization completed successfully!";
+# Display some results
+display total_cost, total_steel, total_emissions;
 """)
 
 # ==================================================
 # Parse AMPL output
 # ==================================================
-def parse_ampl_output(text):
-    """Parse AMPL output and extract results"""
-    lines = text.splitlines()
+def parse_results():
+    """Parse AMPL output file for results"""
+    if not AMPL_OUTPUT_FILE.exists():
+        return None, None
     
-    # ==================================================
-    # COST PER TON
-    # ==================================================
-    cost_rows = []
-    year = None
-    bf = coal = ng = h2 = scrap = avg = np.nan
-    capture_cost = np.nan
-    
-    for i, l in enumerate(lines):
-        # Look for year headers
-        if "Year" in l and "----" in l:
-            year_match = re.search(r'\b(202[5-9]|20[3-5][0-9])\b', l)
-            if year_match:
-                year = int(year_match.group())
-                bf = coal = ng = h2 = scrap = avg = capture_cost = np.nan
+    try:
+        text = AMPL_OUTPUT_FILE.read_text(encoding='utf-8', errors='ignore')
         
-        # Cost extraction patterns
-        if "BF-BOF steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                bf = float(matches[0])
-        elif "Coal DRI–EAF steel:" in l or "Coal DRI-EAF steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                coal = float(matches[0])
-        elif "NG DRI–EAF steel:" in l or "NG DRI-EAF steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                ng = float(matches[0])
-        elif "H2 DRI–EAF steel:" in l or "H2 DRI-EAF steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                h2 = float(matches[0])
-        elif "Scrap–EAF steel:" in l or "Scrap-EAF steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                scrap = float(matches[0])
-        elif "Average Cost:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                avg = float(matches[0])
-                cost_rows.append({
-                    "Year": year,
-                    "BF-BOF ($/t)": bf,
-                    "Coal DRI-EAF ($/t)": coal,
-                    "NG DRI-EAF ($/t)": ng,
-                    "H₂ DRI-EAF ($/t)": h2,
-                    "Scrap-EAF ($/t)": scrap,
-                    "Average ($/t)": avg,
-                    "Capture Cost ($/t)": capture_cost
-                })
-        elif "Capture cost per ton steel:" in l:
-            matches = re.findall(r'\$?\s*([\d.]+)', l)
-            if matches:
-                capture_cost = float(matches[0])
-    
-    # ==================================================
-    # EMISSIONS PER TON
-    # ==================================================
-    emis_rows = []
-    year = None
-    bf = coal = ng = h2 = scrap = avg = np.nan
-    
-    for i, l in enumerate(lines):
-        if "Year" in l and "----" in l:
-            year_match = re.search(r'\b(202[5-9]|20[3-5][0-9])\b', l)
-            if year_match:
-                year = int(year_match.group())
-                bf = coal = ng = h2 = scrap = avg = np.nan
+        # Debug: Show raw output
+        with st.expander("View AMPL Output"):
+            st.code(text[:5000] + "..." if len(text) > 5000 else text)
         
-        # Emissions extraction
-        if "BF-BOF Total per ton:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                bf = float(matches[0])
-        elif "Coal DRI-EAF Total per ton:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                coal = float(matches[0])
-        elif "NG DRI-EAF Total per ton:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                ng = float(matches[0])
-        elif "H2 DRI-EAF Total per ton:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                h2 = float(matches[0])
-        elif "Scrap-EAF Total per ton:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                scrap = float(matches[0])
-        elif "Average System Emissions:" in l:
-            matches = re.findall(r'([\d.]+)', l)
-            if matches:
-                avg = float(matches[0])
-                emis_rows.append({
-                    "Year": year,
-                    "BF-BOF (tCO₂/t)": bf,
-                    "Coal DRI-EAF (tCO₂/t)": coal,
-                    "NG DRI-EAF (tCO₂/t)": ng,
-                    "H₂ DRI-EAF (tCO₂/t)": h2,
-                    "Scrap-EAF (tCO₂/t)": scrap,
-                    "Average (tCO₂/t)": avg
-                })
-    
-    return cost_rows, emis_rows
+        # Try to find cost and emissions data
+        cost_rows = []
+        emis_rows = []
+        
+        lines = text.split('\n')
+        
+        # Simple parsing for cost
+        for line in lines:
+            if 'total_cost[' in line and ':=' in line:
+                # Example: total_cost[2025] := 123.456
+                match = re.search(r'total_cost\[(\d+)\]\s*:=\s*([\d.]+)', line)
+                if match:
+                    year = int(match.group(1))
+                    cost = float(match.group(2))
+                    # Try to find corresponding steel production
+                    steel = 1.0  # Default
+                    for steel_line in lines:
+                        if f'total_steel[{year}]' in steel_line and ':=' in steel_line:
+                            steel_match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', steel_line)
+                            if steel_match and int(steel_match.group(1)) == year:
+                                steel = float(steel_match.group(2))
+                                break
+                    
+                    if steel > 0:
+                        cost_rows.append({
+                            'Year': year,
+                            'Average ($/t)': cost / steel
+                        })
+        
+        # Simple parsing for emissions
+        for line in lines:
+            if 'total_emissions[' in line and ':=' in line:
+                # Example: total_emissions[2025] := 123.456
+                match = re.search(r'total_emissions\[(\d+)\]\s*:=\s*([\d.]+)', line)
+                if match:
+                    year = int(match.group(1))
+                    emissions = float(match.group(2))
+                    # Try to find corresponding steel production
+                    steel = 1.0
+                    for steel_line in lines:
+                        if f'total_steel[{year}]' in steel_line and ':=' in steel_line:
+                            steel_match = re.search(r'total_steel\[(\d+)\]\s*:=\s*([\d.]+)', steel_line)
+                            if steel_match and int(steel_match.group(1)) == year:
+                                steel = float(steel_match.group(2))
+                                break
+                    
+                    if steel > 0:
+                        emis_rows.append({
+                            'Year': year,
+                            'Average (tCO₂/t)': emissions / steel
+                        })
+        
+        df_cost = pd.DataFrame(cost_rows) if cost_rows else pd.DataFrame()
+        df_emis = pd.DataFrame(emis_rows) if emis_rows else pd.DataFrame()
+        
+        return df_cost, df_emis
+        
+    except Exception as e:
+        st.error(f"Error parsing results: {e}")
+        return None, None
 
 # ==================================================
-# Main execution
+# Run optimization
 # ==================================================
-if st.button("🚀 Run Optimization", type="primary"):
-    # Create a progress container
-    progress_container = st.container()
+if st.button("Run Optimization"):
+    if not user_params:
+        st.error("No parameters to optimize")
+        st.stop()
     
-    with progress_container:
-        st.write("### Optimization Progress")
-        status_text = st.empty()
-        progress_bar = st.progress(0)
-        
-        status_text.text("Preparing parameters...")
-        progress_bar.progress(10)
-        
-        # Step 1: Write user parameters
-        write_user_parameters(user_params)
-        status_text.text("Parameters written...")
-        progress_bar.progress(30)
-        
-        # Step 2: Create custom main.mod
-        create_custom_main()
-        status_text.text("Model configured...")
-        progress_bar.progress(50)
-        
-        # Step 3: Write run file
-        write_run_file(use_custom_main=True)
-        status_text.text("Running AMPL optimization...")
-        progress_bar.progress(70)
-        
-        # Step 4: Run AMPL
+    # Write parameter files
+    write_user_params()
+    write_run_file()
+    
+    # Run AMPL
+    with st.spinner("Running AMPL..."):
         try:
+            # Clean previous output
+            if AMPL_OUTPUT_FILE.exists():
+                AMPL_OUTPUT_FILE.unlink()
+            
+            # Run AMPL
             result = subprocess.run(
                 [AMPL_EXE, RUN_FILE.name],
                 cwd=BASE_DIR,
                 capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
+                text=True
             )
-            
-            progress_bar.progress(90)
             
             # Check if AMPL ran successfully
             if result.returncode != 0:
-                st.error(f"AMPL returned error code: {result.returncode}")
-                st.code(result.stderr, language="text")
+                st.error("AMPL failed to run")
+                st.code(f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}")
                 st.stop()
             
-            # Read the output file
-            if AMPL_OUTPUT_FILE.exists():
-                text = AMPL_OUTPUT_FILE.read_text(encoding="utf-8", errors="ignore")
-                
-                # Also capture stdout
-                full_output = result.stdout + "\n" + text
-                
-                # Display raw output in expander
-                with st.expander("View AMPL Output"):
-                    st.code(full_output, language="text")
-                
-                # Parse results
-                status_text.text("Parsing results...")
-                cost_rows, emis_rows = parse_ampl_output(full_output)
-                
-                progress_bar.progress(100)
-                status_text.text("Complete!")
-                
-                # Display results
-                if cost_rows:
-                    df_cost = pd.DataFrame(cost_rows)
-                    st.subheader("📊 Cost per ton of steel (2025–2050)")
-                    st.dataframe(
-                        df_cost.style.format("{:.2f}").background_gradient(cmap="Blues", subset=pd.IndexSlice[:, df_cost.columns[1:]]),
-                        use_container_width=True
-                    )
-                    
-                    # Create a chart
-                    st.line_chart(
-                        df_cost.set_index('Year')[['BF-BOF ($/t)', 'Coal DRI-EAF ($/t)', 
-                                                  'NG DRI-EAF ($/t)', 'H₂ DRI-EAF ($/t)',
-                                                  'Scrap-EAF ($/t)', 'Average ($/t)']]
-                    )
-                else:
-                    st.warning("No cost data found in output.")
-                
-                if emis_rows:
-                    df_emis = pd.DataFrame(emis_rows)
-                    st.subheader("🌍 CO₂ emissions per ton of steel (2025–2050)")
-                    st.dataframe(
-                        df_emis.style.format("{:.3f}").background_gradient(cmap="Reds", subset=pd.IndexSlice[:, df_emis.columns[1:]]),
-                        use_container_width=True
-                    )
-                    
-                    # Create a chart
-                    st.line_chart(
-                        df_emis.set_index('Year')[['BF-BOF (tCO₂/t)', 'Coal DRI-EAF (tCO₂/t)', 
-                                                  'NG DRI-EAF (tCO₂/t)', 'H₂ DRI-EAF (tCO₂/t)',
-                                                  'Scrap-EAF (tCO₂/t)', 'Average (tCO₂/t)']]
-                    )
-                else:
-                    st.warning("No emissions data found in output.")
-                
-                # Display summary statistics
-                col1, col2, col3 = st.columns(3)
-                if cost_rows:
-                    with col1:
-                        avg_cost_2025 = df_cost[df_cost['Year'] == 2025]['Average ($/t)'].values[0] if 2025 in df_cost['Year'].values else np.nan
-                        st.metric("Avg Cost 2025", f"${avg_cost_2025:.2f}" if not pd.isna(avg_cost_2025) else "N/A")
-                    with col2:
-                        avg_cost_2050 = df_cost[df_cost['Year'] == 2050]['Average ($/t)'].values[0] if 2050 in df_cost['Year'].values else np.nan
-                        st.metric("Avg Cost 2050", f"${avg_cost_2050:.2f}" if not pd.isna(avg_cost_2050) else "N/A")
-                if emis_rows:
-                    with col3:
-                        avg_emis_2050 = df_emis[df_emis['Year'] == 2050]['Average (tCO₂/t)'].values[0] if 2050 in df_emis['Year'].values else np.nan
-                        st.metric("Avg Emissions 2050", f"{avg_emis_2050:.3f} tCO₂/t" if not pd.isna(avg_emis_2050) else "N/A")
+            # Parse and display results
+            df_cost, df_emis = parse_results()
+            
+            if df_cost is not None and not df_cost.empty:
+                st.subheader("Cost Results")
+                st.dataframe(df_cost)
             else:
-                st.error("AMPL did not produce output file.")
-                st.code(result.stdout, language="text")
-                
-        except subprocess.TimeoutExpired:
-            st.error("Optimization timed out after 5 minutes.")
+                st.warning("No cost results found in output")
+            
+            if df_emis is not None and not df_emis.empty:
+                st.subheader("Emissions Results")
+                st.dataframe(df_emis)
+            else:
+                st.warning("No emissions results found in output")
+            
+            # Show success message
+            st.success("Optimization completed!")
+            
         except Exception as e:
-            st.error(f"Error running AMPL: {e}")
-            import traceback
-            st.code(traceback.format_exc(), language="text")
+            st.error(f"Error running optimization: {e}")
 
 # ==================================================
-# Sidebar information
+# Display current parameters
 # ==================================================
-st.sidebar.divider()
-st.sidebar.info("""
-### Instructions:
-1. Adjust parameters in the sidebar
-2. Click 'Run Optimization'
-3. View results in the main panel
-
-### Files used:
-- `main.mod`: Main AMPL model
-- `parameters.mod`: Default parameters
-- `user_parameters.mod`: User overrides
-""")
-
-# Clean up temporary files on app start
-for temp_file in [USER_PARAM_FILE, RUN_FILE, CUSTOM_MAIN_FILE, AMPL_OUTPUT_FILE]:
-    if temp_file.exists():
-        try:
-            temp_file.unlink()
-        except:
-            pass
+with st.expander("Current Parameter Values"):
+    param_df = pd.DataFrame.from_dict(user_params, orient='index', columns=['Value'])
+    st.dataframe(param_df)
