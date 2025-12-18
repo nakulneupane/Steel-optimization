@@ -1,13 +1,5 @@
 reset;
-
-# =====================================================
-# Time Horizon
-# =====================================================
 set T ordered := 2025..2050;
-
-# =====================================================
-# Parameters
-# =====================================================
 include parameters.mod;
 
 # --- Time-dependent cost parameters ---
@@ -75,14 +67,7 @@ param grid_ef{t in T} :=
 param scrap_limit{t in T} :=
     scrap_base * (1 + scrap_rate)^(ord(t) - 1);
 
-# =====================================================
-# Variables
-# =====================================================
 include variables.mod;
-
-# =====================================================
-# Process Modules
-# =====================================================
 include modules/a_coke.mod;
 include modules/b_sinter.mod;
 include modules/c_pellets_bf.mod;
@@ -152,3 +137,4 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
