@@ -7,6 +7,15 @@ import pandas as pd
 import numpy as np
 
 # ==================================================
+# Streamlit Setup - MUST BE FIRST
+# ==================================================
+st.set_page_config(
+    layout="wide",
+    page_title="Steel Sector Optimization System",
+    page_icon="🏭"
+)
+
+# ==================================================
 # Custom CSS for Academic/Classical Styling
 # ==================================================
 st.markdown("""
@@ -140,27 +149,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================================================
-# Streamlit Setup
-# ==================================================
-st.set_page_config(
-    layout="wide",
-    page_title="Steel Sector Optimization System",
-    page_icon="🏭"
-)
-
-# Main Title with Academic Touch
-st.markdown("""
-<div style="text-align: center; margin-bottom: 2rem;">
-    <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #1A5276;">
-        🏭 Steel Sector System Modeling
-    </h1>
-    <p style="font-size: 1.1rem; color: #5D6D7E; font-style: italic;">
-        Advanced Multi-Period Linear Programming Optimization Platform
-    </p>
-</div>
-""", unsafe_allow_html=True)
-
-# ==================================================
 # Paths
 # ==================================================
 BASE_DIR = Path(__file__).parent
@@ -256,6 +244,20 @@ include parameters.mod;
 include user_parameters.mod;
 include main.mod;
 """)
+
+# ==================================================
+# Main Title with Academic Touch
+# ==================================================
+st.markdown("""
+<div style="text-align: center; margin-bottom: 2rem;">
+    <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #1A5276;">
+        🏭 Steel Sector System Modeling
+    </h1>
+    <p style="font-size: 1.1rem; color: #5D6D7E; font-style: italic;">
+        Advanced Multi-Period Linear Programming Optimization Platform
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # ==================================================
 # Optimization Execution Section
