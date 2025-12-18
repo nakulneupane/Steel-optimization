@@ -305,17 +305,25 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
     def create_styled_dataframe(df, title, color_scheme):
         st.markdown(f"### {title}")
         
-        # Format numbers based on column type
+        # Format numbers based on column type - FIXED VERSION
         format_dict = {}
         for col in df.columns:
-            if any(x in col.lower() for x in ['frac', 'emiss', 'co2']):
+            # Check for emissions columns (look for CO₂ or emiss in column name)
+            if 'CO₂' in col or 'emiss' in col.lower() or col == 'Average (tCO₂/t)':
                 format_dict[col] = "{:.3f}"
+            # Check for fraction columns
+            elif 'frac' in col.lower():
+                format_dict[col] = "{:.3f}"
+            # Check for cost columns
             elif '$' in col:
                 format_dict[col] = "${:.2f}"
-            elif 't)' in col and 'frac' not in col:
+            # Check for tonnage columns (but not fractions)
+            elif ('(t)' in col or col == 'Total steel (t)' or col == 'Total CCS (t)') and 'frac' not in col.lower():
                 format_dict[col] = "{:,.0f}"
+            # Year column
             elif 'Year' in col:
                 format_dict[col] = "{:.0f}"
+            # Default for other numeric columns
             else:
                 format_dict[col] = "{:.2f}"
         
@@ -379,7 +387,7 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
         create_styled_dataframe(df_cost, "Cost per Ton of Steel (2025–2050)", "cost")
     
     # ==================================================
-    # EMISSIONS PER TON
+    # EMISSIONS PER TON - FIXED DISPLAY
     # ==================================================
     emis_rows = []
     year = None
@@ -415,7 +423,25 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
     
     if emis_rows:
         df_emis = pd.DataFrame(emis_rows)
-        create_styled_dataframe(df_emis, "CO₂ Emissions per Ton of Steel (2025–2050)", "emissions")
+        # Display emissions with debug info to verify values
+        st.markdown("### CO₂ Emissions per Ton of Steel (2025–2050)")
+        
+        # Apply specific formatting for emissions table
+        emis_format_dict = {}
+        for col in df_emis.columns:
+            if col == "Year":
+                emis_format_dict[col] = "{:.0f}"
+            else:
+                emis_format_dict[col] = "{:.3f}"  # All emissions columns get 3 decimals
+        
+        styled_emis = df_emis.style.format(emis_format_dict)
+        
+        # Apply gradient - don't apply to Year column
+        gradient_cols = [col for col in df_emis.columns if col != "Year"]
+        if gradient_cols:
+            styled_emis = styled_emis.background_gradient(cmap="Reds_r", subset=gradient_cols)
+        
+        st.dataframe(styled_emis, use_container_width=True, height=400)
     
     # ==================================================
     # PRODUCTION ROUTE
