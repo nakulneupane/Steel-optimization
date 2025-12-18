@@ -165,7 +165,6 @@ param_pattern = re.compile(
     re.IGNORECASE
 )
 
-@st.cache_data
 def load_defaults():
     params = {}
     with open(PARAM_FILE) as f:
@@ -175,9 +174,8 @@ def load_defaults():
                 params[m.group(1)] = float(m.group(2))
     return params
 
-# Load default parameters
-default_params = load_defaults()
-H2_START_YEAR = int(default_params.get("h2_start_year", 2030))
+params = load_defaults()
+H2_START_YEAR = int(params.get("h2_start_year", 2030))
 
 # ==================================================
 # Sidebar Parameters - Academic Layout
@@ -191,22 +189,17 @@ st.sidebar.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Initialize session state for user parameters if not exists
-if 'user_params' not in st.session_state:
-    st.session_state.user_params = default_params.copy()
-
-# Create sidebar inputs and store values in session state
-for k, v in sorted(default_params.items()):
+# Organize parameters in a clean layout
+user_params = {}
+for k, v in sorted(params.items()):
     label = f"**{k}**"
     help_text = f"Default: {v:.6f}"
-    
-    # Create input and store in session state
-    st.session_state.user_params[k] = st.sidebar.number_input(
+    user_params[k] = st.sidebar.number_input(
         label,
-        value=st.session_state.user_params[k],
+        value=v,
         format="%.6f",
         help=help_text,
-        key=f"param_input_{k}"
+        key=f"param_{k}"
     )
 
 st.sidebar.markdown("---")
@@ -263,27 +256,14 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.markdown("Configure parameters and initiate optimization process.")
 
-# Show current parameter values for debugging
-with st.expander("🔍 View current parameter values"):
-    current_params_df = pd.DataFrame.from_dict(
-        st.session_state.user_params, 
-        orient='index', 
-        columns=['Value']
-    ).sort_index()
-    st.dataframe(current_params_df.style.format("{:.6f}"))
-
-# Run optimization button
 if col2.button("▶️ Run Optimization", type="primary", use_container_width=True):
     
     # Create a progress bar
     progress_bar = st.progress(0)
     
-    # Write parameter files using CURRENT session state values
-    write_user_parameters(st.session_state.user_params)
+    # Write parameter files
+    write_user_parameters(user_params)
     write_run_file()
-    
-    # Show which parameters are being used
-    st.info(f"Running optimization with {len(st.session_state.user_params)} parameters...")
     
     # Start AMPL process
     process = subprocess.Popen(
