@@ -1,7 +1,7 @@
 #reset;
 set T ordered := 2025..2050;
 
-include parameters.mod;
+#include parameters.mod;
 
 #Time dependent parameters
 param N2_cost_h2{t in T} :=
@@ -92,6 +92,7 @@ solve;
 include cost_report.mod;
 include emissions_report.mod;
 include report.mod;
+
 
 
 
