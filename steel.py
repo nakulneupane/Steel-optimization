@@ -10,8 +10,8 @@ import numpy as np
 # Streamlit setup
 # ==================================================
 st.set_page_config(layout="wide")
-st.title("Steel System Optimization (AMPL)")
-st.caption("Optimization + fully tabularized results")
+st.title("Steel-Sector System's Modeling")
+st.caption("AMPL Optimization")
 
 # ==================================================
 # Paths
