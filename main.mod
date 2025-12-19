@@ -1,5 +1,7 @@
 reset;
 set T ordered := 2025..2050;
+
+include definitions.mod;
 include parameters.mod;
 
 # --- Time-dependent cost parameters ---

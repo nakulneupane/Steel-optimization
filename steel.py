@@ -232,7 +232,7 @@ include main.mod;
 """)
 
 # ==================================================
-# Main Title with Academic Touch
+# Main Title 
 # ==================================================
 st.markdown("""
 <div style="text-align: center; margin-bottom: 2rem;">
@@ -264,14 +264,18 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
     write_user_parameters(user_params)
     write_run_file()
     
+
     # Start AMPL process
     process = subprocess.Popen(
         [AMPL_EXE, RUN_FILE.name],
         cwd=BASE_DIR,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding='utf-8',    
+        errors='ignore'      
     )
+
     
     # Animate progress bar while AMPL runs
     progress = 0
@@ -351,38 +355,123 @@ if col2.button("▶️ Run Optimization", type="primary", use_container_width=Tr
         cost_rows = []
         year = None
         bf = coal = ng = h2 = scrap = avg = np.nan
+        year_data_complete = False
         
         for l in lines:
-            if "Year" in l and "----" in l:
-                year = int(re.findall(r"\d{4}", l)[0])
+            # Look for year separator lines
+            if "Year" in l and "---" in l:
+                # Save previous year's data if exists and is complete
+                if year is not None and year_data_complete:
+                    cost_rows.append({
+                        "Year": year,
+                        "BF-BOF ($/t)": bf,
+                        "Coal DRI-EAF ($/t)": coal,
+                        "NG DRI-EAF ($/t)": ng,
+                        "H₂ DRI-EAF ($/t)": h2 if year >= H2_START_YEAR else np.nan,
+                        "Scrap-EAF ($/t)": scrap,
+                        "Average ($/t)": avg
+                    })
+                    year_data_complete = False
+                
+                # Extract year from line like "Year 2025"
+                year_match = re.search(r"Year\s+(\d{4})", l)
+                if year_match:
+                    year = int(year_match.group(1))
+                else:
+                    # Try alternative pattern
+                    year_match = re.search(r"\b(20\d{2})\b", l)
+                    if year_match:
+                        year = int(year_match.group(1))
+                
+                # Reset all values
                 bf = coal = ng = h2 = scrap = avg = np.nan
+                continue
             
+            # Parse costs - using more specific patterns from your output
             if "BF-BOF steel:" in l:
-                bf = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            if "Coal DRI–EAF steel:" in l:
-                coal = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            if "NG DRI–EAF steel:" in l:
-                ng = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            if "H2 DRI–EAF steel:" in l:
-                h2 = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            if "Scrap–EAF steel:" in l:
-                scrap = float(re.findall(r"\$ *([\d.]+)", l)[0])
-            if "Average Cost:" in l:
-                avg = float(re.findall(r"\$ *([\d.]+)", l)[0])
-                cost_rows.append({
-                    "Year": year,
-                    "BF-BOF ($/t)": bf,
-                    "Coal DRI-EAF ($/t)": coal,
-                    "NG DRI-EAF ($/t)": ng,
-                    "H₂ DRI-EAF ($/t)": h2,
-                    "Scrap-EAF ($/t)": scrap,
-                    "Average ($/t)": avg
-                })
+                match = re.search(r"\$?\s*([\d.]+)/", l)
+                if match:
+                    bf = float(match.group(1))
+            
+            elif "Coal DRI–EAF steel:" in l:
+                match = re.search(r"\$?\s*([\d.]+)/", l)
+                if match:
+                    coal = float(match.group(1))
+            
+            elif "NG DRI–EAF steel:" in l:
+                match = re.search(r"\$?\s*([\d.]+)/", l)
+                if match:
+                    ng = float(match.group(1))
+            
+            elif "H2 DRI–EAF steel:" in l:
+                match = re.search(r"\$?\s*([\d.]+)/", l)
+                if match:
+                    # Only store H2 cost if year >= H2_START_YEAR
+                    if year is not None and year >= H2_START_YEAR:
+                        h2 = float(match.group(1))
+                    else:
+                        # Don't store H2 cost for years before 2030
+                        h2 = np.nan
+            
+            elif "Scrap–EAF steel:" in l:
+                match = re.search(r"\$?\s*([\d.]+)/", l)
+                if match:
+                    scrap = float(match.group(1))
+            
+            elif "Average Cost:" in l:
+                match = re.search(r"\$?\s*([\d.]+)\s*\$?/", l)
+                if match:
+                    avg = float(match.group(1))
+                    # Mark that we have complete data for this year
+                    year_data_complete = True
         
-        if cost_rows:
-            df_cost = pd.DataFrame(cost_rows)
-            create_styled_dataframe(df_cost, "Cost per Ton of Steel (2025–2050)", "cost")
+        # Don't forget the last year if it has complete data
+        if year is not None and year_data_complete:
+            cost_rows.append({
+                "Year": year,
+                "BF-BOF ($/t)": bf,
+                "Coal DRI-EAF ($/t)": coal,
+                "NG DRI-EAF ($/t)": ng,
+                "H₂ DRI-EAF ($/t)": h2 if year >= H2_START_YEAR else np.nan,
+                "Scrap-EAF ($/t)": scrap,
+                "Average ($/t)": avg
+            })
         
+        # Create dataframe
+        df_cost = pd.DataFrame(cost_rows)
+        
+        # Remove any duplicate years (just in case)
+        df_cost = df_cost.drop_duplicates(subset=['Year'], keep='first')
+        
+        # Sort by year to ensure correct order
+        df_cost = df_cost.sort_values('Year').reset_index(drop=True)
+        
+        # Display the cost table
+        st.markdown("### Cost per Ton of Steel (2025–2050)")
+        if not df_cost.empty:
+            # Format the dataframe
+            format_dict = {
+                'Year': '{:.0f}',
+                'BF-BOF ($/t)': '${:.2f}',
+                'Coal DRI-EAF ($/t)': '${:.2f}',
+                'NG DRI-EAF ($/t)': '${:.2f}',
+                'H₂ DRI-EAF ($/t)': '${:.2f}',
+                'Scrap-EAF ($/t)': '${:.2f}',
+                'Average ($/t)': '${:.2f}'
+            }
+            
+            styled_df = df_cost.style.format(format_dict)
+            
+            # Apply gradient - don't apply to Year column
+            gradient_cols = [col for col in df_cost.columns if col != "Year"]
+            if gradient_cols:
+                styled_df = styled_df.background_gradient(cmap="Blues", subset=gradient_cols)
+            
+            st.dataframe(styled_df, use_container_width=True, height=400)
+            
+            # Debug: Show how many rows we have
+            st.write(f"**Total rows in table:** {len(df_cost)}")
+
         # ==================================================
         # EMISSIONS PER TON
         # ==================================================
